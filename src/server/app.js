@@ -84,14 +84,20 @@ function makeEventHandler(id) {
         // M2 reports whether the Figma data came from a stale cache. The UI
         // needs this prominently: a stale design means the audit compared
         // against something other than what is on screen in Figma.
+        //
+        // Only once, though. When the rate-limit retry has already explained
+        // this, adding a second near-identical banner just makes the report
+        // look noisy - the reader learns nothing from the repetition.
         if (event.id === 'M2' && event.info?.stale) {
           runs.patchMeta(id, { figmaCacheStale: true });
-          record.warnings.push({
-            stage: 'M2',
-            message:
-              'Figma data was served from cache and may be stale - the live file could not be reached ' +
-              '(rate limit). Findings may reflect an older version of the design.',
-          });
+          if (!record.warnings.some((w) => w.stage === 'M2')) {
+            record.warnings.push({
+              stage: 'M2',
+              message:
+                'Figma data was served from cache and may be stale - the live file could not be reached ' +
+                '(rate limit). Findings may reflect an older version of the design.',
+            });
+          }
         }
         break;
       }

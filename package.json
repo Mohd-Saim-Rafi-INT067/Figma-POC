@@ -12,7 +12,9 @@
     "test": "node --test test/*.test.js",
     "validate": "node fixtures/run.js",
     "server": "node src/server/index.js",
-    "start": "node src/server/index.js"
+    "start": "node src/server/index.js",
+    "build": "npm --prefix ui install && npm --prefix ui run build",
+    "ui": "npm --prefix ui run dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

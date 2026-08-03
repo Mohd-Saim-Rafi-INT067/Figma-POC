@@ -2,3 +2,6 @@ node_modules/
 .env
 .cache/
 out/
+ui/node_modules/
+ui/dist/
+*.tsbuildinfo

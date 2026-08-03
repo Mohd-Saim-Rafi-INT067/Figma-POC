@@ -12,7 +12,7 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 | 0 · Baseline | 0.5 h | working tree committed, reference outputs captured |
 | 1 · Extract the runner | 0.5 d | ✅ tests + fixture validation identical, CLI output unchanged |
 | 2 · Server | 1 d | ✅ full run drivable by `curl` alone |
-| 3 · Shell, form, progress | 1 d | live stage ticks against a real run |
+| 3 · Shell, form, progress | 1 d | ✅ live stage ticks against a real run |
 | 4 · Report view | 1.5 d | full report renders **with and without** an LLM key |
 | 5 · Raw findings + downloads | 0.5 d | all three artifacts download and open |
 | 6 · Errors + rehearsal | 0.5 d | every §7 failure row reproduced and handled |
@@ -167,34 +167,50 @@ This is why the phase gate was "drivable by curl alone" rather than "the code is
 
 ## Phase 3 — Shell, form, progress (1 d)
 
-- [ ] **T3.1** Scaffold `ui/` — Vite + React 18 + TypeScript + Tailwind. `vite.config.ts` proxies
+- [x] **T3.1** Scaffold `ui/` — Vite + React 18 + TypeScript + Tailwind. `vite.config.ts` proxies
       `/api` → `http://localhost:5173`. Add root `"build"` script per plan §10.
-- [ ] **T3.2** `ui/src/types.ts` — mirror the §5.2 run record and the `exec` / `sectionScores` /
+- [x] **T3.2** `ui/src/types.ts` — mirror the §5.2 run record and the `exec` / `sectionScores` /
       `issues` / `fixOrder` shapes from `report/analysis.js`. Hand-written; the source of truth is
       `analysis.js`, so cite it in a comment.
-- [ ] **T3.3** `ui/src/api.ts` — `startAudit()`, `getRun()`, `openEvents()` (EventSource wrapper),
+- [x] **T3.3** `ui/src/api.ts` — `startAudit()`, `getRun()`, `openEvents()` (EventSource wrapper),
       `getHealth()`, download URL builders. One place that knows about HTTP.
-- [ ] **T3.4** `App.tsx` — state machine `idle → validating → running → done | failed`. SSE drives
+- [x] **T3.4** `App.tsx` — state machine `idle → validating → running → done | failed`. SSE drives
       transitions; on `run:done` fetch the full record once (the events carry progress, not the report).
-- [ ] **T3.5** `AuditForm.tsx` — Figma frame URL, website URL, **Generate Report**. Client-side checks:
+- [x] **T3.5** `AuditForm.tsx` — Figma frame URL, website URL, **Generate Report**. Client-side checks:
       non-empty, parses as a URL, Figma URL has a `node-id`. Instant feedback; the server stays
       authoritative. Disable the button while a run is live.
-- [ ] **T3.6** Field-level server errors: render `{ error, hint }` under the offending field. Verify the
+- [x] **T3.6** Field-level server errors: render `{ error, hint }` under the offending field. Verify the
       "that URL points at a file, not a frame" hint (`config.js:60-66`) renders in full — it is the most
       likely live mistake in the demo and the existing wording is better than anything we'd write.
-- [ ] **T3.7** Advanced disclosure with the **determinism check** checkbox, default **off**. Label it
+- [x] **T3.7** Advanced disclosure with the **determinism check** checkbox, default **off**. Label it
       with its real cost ("re-extracts the page to prove the extractor is deterministic; adds ~15 s").
-- [ ] **T3.8** `ProgressPanel.tsx` — the twelve stages with the demo-facing labels from plan §8,
+- [x] **T3.8** `ProgressPanel.tsx` — the twelve stages with the demo-facing labels from plan §8,
       **in engine order: Figma before Website.** Add a one-line note in the component explaining why
       (frame width sets the viewport, `config.js:143-168`) so nobody "fixes" it later.
-- [ ] **T3.9** Progress behaviour: instant ticks for the fast stages; indeterminate spinner + live
+- [x] **T3.9** Progress behaviour: instant ticks for the fast stages; indeterminate spinner + live
       elapsed counter on M1, DET and S5. **No percentage bar** — see plan §8.
-- [ ] **T3.10** Render each stage's `info` next to its tick as it lands (`nodes=3183`,
+- [x] **T3.10** Render each stage's `info` next to its tick as it lands (`nodes=3183`,
       `scrollHeight=23991`, `findings=97`). This is what makes the panel read as an engine rather than a
       loading animation.
-- [ ] **T3.11** Call `/api/health` on mount; if `llm` is `null`, warn *before* the run that the
+- [x] **T3.11** Call `/api/health` on mount; if `llm` is `null`, warn *before* the run that the
       narrative will be skipped. A 30-second wait followed by a surprise is a bad demo moment.
-- [ ] **T3.12** Verify against a real run end-to-end. Commit.
+- [x] **T3.12** Verify against a real run end-to-end. Commit.
+
+> **Gate — met.** Verified in a real browser against `http://localhost:5173` (the demo path: Express
+> serving `ui/dist`, one port, no Vite). Client-side validation caught both a file-link-instead-of-frame
+> and a scheme-less page URL instantly. A live run ticked through all 11 stages with per-stage timings
+> and info, the spinner and explanation appeared on the slow stages, the rate-limit retry reset the
+> checklist and showed its banner, and the run completed at **66 Fair / 83% confidence / 18 of 18
+> sections matched / 37 s**. No console errors.
+
+**Stack note:** Vite 8, React 18, Tailwind 4, TypeScript 5.9. The plan's `@vitejs/plugin-react@4` no
+longer exists in a form compatible with current Vite — v6 requires Vite 8, so both moved up together.
+Project references were dropped in favour of a single `tsconfig.json` (`tsc --noEmit && vite build`);
+the referenced-project setup demands `composite: true`, which buys nothing for an app this size.
+
+**Deferred to Phase 4:** the completion state is currently a four-tile placeholder
+(`RunSummary` in `App.tsx`) showing score, confidence, sections matched and duration. `ReportView`
+replaces it.
 
 ---
 
