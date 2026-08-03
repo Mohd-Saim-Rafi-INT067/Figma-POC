@@ -4,3 +4,63 @@ html {
   -webkit-font-smoothing: antialiased;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/*
+  Typography for the generated report blocks.
+
+  Scoped to .prose-report so it can never reach the computed UI around it - the
+  narrative is the only markdown on the page, and it is the only untrusted
+  content, so it gets its own box in every sense.
+*/
+.prose-report > * + * {
+  margin-top: 0.85rem;
+}
+
+.prose-report h3 {
+  margin-top: 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-slate-900);
+}
+
+.prose-report p {
+  line-height: 1.7;
+}
+
+.prose-report strong {
+  font-weight: 600;
+  color: var(--color-slate-900);
+}
+
+.prose-report ul,
+.prose-report ol {
+  padding-left: 1.25rem;
+  line-height: 1.7;
+}
+
+.prose-report ul {
+  list-style: disc;
+}
+
+.prose-report ol {
+  list-style: decimal;
+}
+
+.prose-report li + li {
+  margin-top: 0.3rem;
+}
+
+.prose-report code {
+  border-radius: 0.25rem;
+  background: var(--color-slate-100);
+  padding: 0.1rem 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+  color: var(--color-slate-800);
+}
+
+.prose-report a {
+  color: var(--color-indigo-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

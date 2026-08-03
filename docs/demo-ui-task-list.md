@@ -13,7 +13,7 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 | 1 · Extract the runner | 0.5 d | ✅ tests + fixture validation identical, CLI output unchanged |
 | 2 · Server | 1 d | ✅ full run drivable by `curl` alone |
 | 3 · Shell, form, progress | 1 d | ✅ live stage ticks against a real run |
-| 4 · Report view | 1.5 d | full report renders **with and without** an LLM key |
+| 4 · Report view | 1.5 d | ✅ renders with **and without** an LLM key |
 | 5 · Raw findings + downloads | 0.5 d | all three artifacts download and open |
 | 6 · Errors + rehearsal | 0.5 d | every §7 failure row reproduced and handled |
 
@@ -219,41 +219,60 @@ replaces it.
 The load-bearing phase. Every number comes from `result.exec` / `sectionScores` / `issues` / `fixOrder`;
 prose is a separate, optional layer (plan §5.3).
 
-- [ ] **T4.1** `ReportView.tsx` — composes the blocks below and renders the run header (page URL, Figma
+- [x] **T4.1** `ReportView.tsx` — composes the blocks below and renders the run header (page URL, Figma
       frame, viewport width, tolerance profile, duration, timestamp).
-- [ ] **T4.2** `Prose.tsx` — renders one prose block via `marked` → `dompurify` → `dangerouslySetInnerHTML`.
+- [x] **T4.2** `Prose.tsx` — renders one prose block via `marked` → `dompurify` → `dangerouslySetInnerHTML`.
       Sanitise unconditionally; it is model output. Renders **nothing** (not an error, not a placeholder
       box) when its block is absent.
-- [ ] **T4.3** `ScoreCards.tsx` — **Overall Health Score** (`exec.overallScore` + `exec.overallStatus`)
+- [x] **T4.3** `ScoreCards.tsx` — **Overall Health Score** (`exec.overallScore` + `exec.overallStatus`)
       and **Match Confidence** (`exec.confidence.percent` + `.verdict`, with `.notes` listed beneath).
       The notes are the interesting part — "every design section was found on the page" is the sentence
       that answers a manager's actual question.
-- [ ] **T4.4** Severity counts strip from `result.counts.bySeverity` / `.byCategory`. Colour **and**
+- [x] **T4.4** Severity counts strip from `result.counts.bySeverity` / `.byCategory`. Colour **and**
       label for severity, never colour alone.
-- [ ] **T4.5** **Executive Assessment** — `Prose` block plus the structured facts that survive without
+- [x] **T4.5** **Executive Assessment** — `Prose` block plus the structured facts that survive without
       it: `exec.structuralIntact`, design vs page section counts, `exec.matched` /
       `missingInWeb` / `extraInWeb`, design vs page total height.
-- [ ] **T4.6** `FixPriority.tsx` — ranked list from `fixOrder[]`: `rank`, `label`, `severity`,
+- [x] **T4.6** `FixPriority.tsx` — ranked list from `fixOrder[]`: `rank`, `label`, `severity`,
       `issueCount`, `sectionCount`, `rationale`. Render in the given order and show `rank` — the
       ordering is computed (`analysis.js:180-223`) and the prose cites it, so re-sorting in the UI would
       contradict the narrative. Pair with the *What To Fix First* prose block.
-- [ ] **T4.7** `KeyIssues.tsx` — cards from `issues[]`: title, severity, affected sections, occurrences,
+- [x] **T4.7** `KeyIssues.tsx` — cards from `issues[]`: title, severity, affected sections, occurrences,
       and the `knowledge` fields (`why`, `causes`, `impact`, `investigate`, `intent`). Render the
       one-fix / systemic distinction as words, never as raw booleans — `analysis.js:139-150` explains
       why those two flags are deliberately not the same thing. Pair with the *Key Issues* prose block.
-- [ ] **T4.8** `SectionNotes.tsx` — from `sectionScores[]`: label, score, status, match confidence,
+- [x] **T4.8** `SectionNotes.tsx` — from `sectionScores[]`: label, score, status, match confidence,
       design vs page height + ratio, severity breakdown, `problems[]`. Sorted by section index; worst
       scores visually marked. Pair with the *Section Notes* prose block.
-- [ ] **T4.9** **Conclusion** — prose-only; the whole block is hidden when prose is unavailable.
-- [ ] **T4.10** `ProseAuditBadge.tsx` — from `prose.audit`: green *"48 / 48 figures traced to measured
+- [x] **T4.9** **Conclusion** — prose-only; the whole block is hidden when prose is unavailable.
+- [x] **T4.10** `ProseAuditBadge.tsx` — from `prose.audit`: green *"48 / 48 figures traced to measured
       findings"* when `clean`, amber listing `unaccounted` otherwise. Also flag `contentLeak`. Keep the
       tooltip honest about what this does and does not prove (`report/audit.js:17-33`).
-- [ ] **T4.11** Prose-unavailable state: when `prose.ok === false`, show `prose.reason` once, inline and
+- [x] **T4.11** Prose-unavailable state: when `prose.ok === false`, show `prose.reason` once, inline and
       calm — the report is complete, the narrative is not. Not an error banner.
-- [ ] **T4.12** **Verify with `GEMINI_API_KEY` and `ANTHROPIC_API_KEY` unset.** Every block except
+- [x] **T4.12** **Verify with `GEMINI_API_KEY` and `ANTHROPIC_API_KEY` unset.** Every block except
       Conclusion must render with full content. This is the phase gate.
-- [ ] **T4.13** Verify with the LLM enabled: prose blocks land under the right headings, no duplication
+- [x] **T4.13** Verify with the LLM enabled: prose blocks land under the right headings, no duplication
       against the structured content. Commit.
+
+> **Gate — met, and not by contrivance.** Gemini's quota ran out mid-phase
+> (`429 RESOURCE_EXHAUSTED`), so the no-narrative path was verified against a real failure rather than a
+> deliberately unset key: the report rendered complete — scores, confidence, severity counts, dominant
+> issues, full fix order, all 13 issues, all 18 section rows — with one calm line explaining the summary
+> was unavailable. The prose path was then verified against an earlier run carrying all five blocks and a
+> clean **42 of 42 figures traced** badge. No horizontal overflow; disclosures work.
+
+**Colour was computed, not chosen.** Severity and health bands are *status* encodings, so they use a
+reserved ordered set and never double as categorical identity — and every one ships with a written label
+plus a shape, so nothing depends on colour alone. The raw status hues fail contrast as ink on white, so
+each token is a tinted surface with a dark same-hue text step; all eleven pairs were measured against
+WCAG AA, worst case **4.76:1**. The score readouts are meters (one ratio against a limit), not charts,
+and 18 section scores are a table rather than 18 colours.
+
+**Added ahead of schedule: `?run=<id>`.** Needed to verify the prose path once the live quota was gone,
+and it is also plan §14.2 / T6.8 — the pre-baked-run fallback that makes the demo safe when Figma, the
+network, the site or the model endpoint misbehaves. Three of those four have failed at least once during
+this build.
 
 ---
 

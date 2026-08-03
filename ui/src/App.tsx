@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuditForm, type FormValues } from './components/AuditForm';
 import { ProgressPanel } from './components/ProgressPanel';
+import { ReportView } from './components/ReportView';
 import { getHealth, getRun, openEvents, startAudit, RequestFailed } from './api';
 import type { Health, RunEvent, RunRecord, StageRecord } from './types';
 
@@ -24,6 +25,27 @@ export default function App() {
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth(null));
+
+    /*
+      ?run=<id> opens a completed run directly.
+      A live audit depends on Figma's API, the network, the site and a model
+      endpoint; three of those have failed at least once during development. A
+      previously completed run is the fallback that makes the demo safe, and it
+      costs one URL parameter because runs.js already rehydrates from disk.
+    */
+    const wanted = new URLSearchParams(window.location.search).get('run');
+    if (wanted) {
+      getRun(wanted)
+        .then((r) => {
+          setRecord(r);
+          setStages(r.stages);
+          setPhase(r.status === 'failed' ? 'failed' : 'done');
+        })
+        .catch((err) => {
+          setServerError({ message: `Could not open run ${wanted}: ${err.message}`, hint: null });
+        });
+    }
+
     return () => closeStream.current?.();
   }, []);
 
@@ -145,7 +167,11 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-8">
+      <main
+        className={`mx-auto space-y-6 px-6 py-8 ${
+          phase === 'done' ? 'max-w-5xl' : 'max-w-3xl'
+        }`}
+      >
         {phase === 'idle' || phase === 'starting' ? (
           <AuditForm onSubmit={submit} disabled={busy} health={health} serverError={serverError} />
         ) : null}
@@ -168,20 +194,12 @@ export default function App() {
   );
 }
 
-/**
- * Placeholder completion state for Phase 3.
- *
- * Phase 3's gate is "live stage ticks against a real run", so this shows just
- * enough to prove the run completed and the record arrived. ReportView (Phase
- * 4) replaces it.
- */
 function RunSummary({ record, onReset }: { record: RunRecord; onReset: () => void }) {
-  const exec = record.result?.exec;
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {record.warnings.map((w, i) => (
         <div key={i} className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <span className="font-medium">{w.stage}</span> — {w.message}
+          {w.message}
         </div>
       ))}
 
@@ -196,27 +214,7 @@ function RunSummary({ record, onReset }: { record: RunRecord; onReset: () => voi
         </div>
       )}
 
-      {record.status === 'done' && exec && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Audit complete</h2>
-          <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-            {[
-              ['Health score', `${exec.overallScore} · ${exec.overallStatus}`],
-              ['Match confidence', `${exec.confidence.percent}% · ${exec.confidence.verdict}`],
-              ['Sections matched', `${exec.matched} of ${exec.designSections}`],
-              ['Duration', record.meta.durationMs ? `${Math.round(record.meta.durationMs / 1000)}s` : '—'],
-            ].map(([k, v]) => (
-              <div key={k}>
-                <dt className="text-slate-500">{k}</dt>
-                <dd className="mt-0.5 font-medium text-slate-900">{v}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="mt-5 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
-            The full report view arrives in Phase 4.
-          </p>
-        </div>
-      )}
+      {record.status === 'done' && <ReportView record={record} />}
 
       <button
         onClick={onReset}
