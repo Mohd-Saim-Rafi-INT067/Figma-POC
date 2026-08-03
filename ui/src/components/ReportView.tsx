@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { RunRecord } from '../types';
 import { ScoreCards } from './ScoreCards';
 import { FixPriority } from './FixPriority';
@@ -5,6 +6,8 @@ import { KeyIssues } from './KeyIssues';
 import { SectionNotes } from './SectionNotes';
 import { Prose, ProseUnavailable } from './Prose';
 import { ProseAuditBadge } from './ProseAuditBadge';
+import { DownloadBar } from './DownloadBar';
+import { RawFindings } from './RawFindings';
 
 /**
  * The report.
@@ -41,11 +44,24 @@ const Card = ({ children }: { children: React.ReactNode }) => (
 );
 
 export function ReportView({ record }: { record: RunRecord }) {
+  const [rawOpen, setRawOpen] = useState(false);
   const result = record.result;
   if (!result?.exec) return null;
 
   const { exec, prose } = result;
   const p = (name: string) => prose.sections?.[name];
+
+  const openRaw = () => {
+    const next = !rawOpen;
+    setRawOpen(next);
+    // Jump to it rather than leaving the reader to hunt: the table lives at
+    // the bottom of a long report.
+    if (next) {
+      requestAnimationFrame(() =>
+        document.getElementById('raw-findings')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      );
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -78,6 +94,8 @@ export function ReportView({ record }: { record: RunRecord }) {
           copy.
         </p>
       </div>
+
+      <DownloadBar runId={record.id} files={result.files} rawOpen={rawOpen} onToggleRaw={openRaw} />
 
       {/* --- scores ------------------------------------------------------ */}
       <ScoreCards exec={exec} counts={result.counts} />
@@ -173,6 +191,18 @@ export function ReportView({ record }: { record: RunRecord }) {
           </Card>
         </Section>
       )}
+
+      {/* --- raw findings -------------------------------------------------- */}
+      <div id="raw-findings" className="scroll-mt-6">
+        {rawOpen && (
+          <Section
+            title="Raw findings"
+            subtitle="Every finding the engine produced, before grouping — the data behind everything above."
+          >
+            <RawFindings runId={record.id} />
+          </Section>
+        )}
+      </div>
 
       {/* --- determinism -------------------------------------------------- */}
       {result.determinism && (

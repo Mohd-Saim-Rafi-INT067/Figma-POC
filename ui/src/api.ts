@@ -2,7 +2,7 @@
  * The only module that knows about HTTP. Everything else takes typed values.
  */
 
-import type { ApiError, Health, RunEvent, RunRecord } from './types';
+import type { ApiError, FindingsFile, Health, RunEvent, RunRecord } from './types';
 
 export class RequestFailed extends Error {
   field?: string;
@@ -59,6 +59,20 @@ export async function getHealth(): Promise<Health> {
 
 export const downloadUrl = (id: string, file: 'report.md' | 'report.html' | 'findings.json') =>
   `/api/runs/${encodeURIComponent(id)}/${file}`;
+
+/**
+ * The raw findings, for the in-app table.
+ *
+ * Same URL the download button uses. The Content-Disposition header only
+ * affects navigation, not fetch, so one endpoint serves both - a second
+ * "inline" route would be two things to keep in step for no gain.
+ *
+ * Fetched on demand: it is ~77 kB on the reference run and most viewers never
+ * open the table.
+ */
+export async function getFindings(id: string): Promise<FindingsFile> {
+  return parse<FindingsFile>(await fetch(downloadUrl(id, 'findings.json')));
+}
 
 /**
  * Subscribe to a run's progress.

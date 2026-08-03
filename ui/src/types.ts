@@ -175,6 +175,46 @@ export type RunEvent =
   | { type: 'run:done'; ok: boolean; ms?: number }
   | { type: 'run:unknown' };
 
+// ---- raw findings --------------------------------------------------------
+
+/** One row of out/runs/<id>/findings.json — the engine's own output, unreshaped. */
+export interface Finding {
+  id: string;
+  category: string;
+  type: string;
+  property: string;
+  expected: string | number | null;
+  actual: string | number | null;
+  delta?: number | null;
+  ratio?: number | null;
+  occurrenceCount?: number | null;
+  sectionCount?: number;
+  severity: Severity;
+  severityReasons?: string[];
+  lowConfidence?: boolean;
+  fingerprint?: string;
+  sections: {
+    figmaIndex: number;
+    webIndex: number;
+    figmaLabel: string;
+    webLabel: string;
+    confidence: number;
+  }[];
+}
+
+export interface FindingsFile {
+  meta: {
+    pageUrl: string;
+    figmaFileKey: string;
+    figmaNodeId: string;
+    viewportWidth: number;
+    generatedAt: string;
+    toleranceProfile: string;
+  };
+  counts: { bySeverity: Record<string, number>; byCategory: Record<string, number> };
+  findings: Finding[];
+}
+
 export interface Health {
   ok: boolean;
   figmaToken: boolean;

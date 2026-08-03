@@ -14,7 +14,7 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 | 2 · Server | 1 d | ✅ full run drivable by `curl` alone |
 | 3 · Shell, form, progress | 1 d | ✅ live stage ticks against a real run |
 | 4 · Report view | 1.5 d | ✅ renders with **and without** an LLM key |
-| 5 · Raw findings + downloads | 0.5 d | all three artifacts download and open |
+| 5 · Raw findings + downloads | 0.5 d | ✅ all three artifacts download and open |
 | 6 · Errors + rehearsal | 0.5 d | every §7 failure row reproduced and handled |
 
 ---
@@ -278,21 +278,35 @@ this build.
 
 ## Phase 5 — Raw findings + downloads (0.5 d)
 
-- [ ] **T5.1** `RawFindings.tsx` — table over `findings.json`: severity badge, section pair (`§18→19`),
+- [x] **T5.1** `RawFindings.tsx` — table over `findings.json`: severity badge, section pair (`§18→19`),
       property, expected, actual, notes (`×52`, `Δ 3`, `ratio 1.4`, `dynamic content`). ~97 rows on the
       reference run, so client-side only — no virtualisation, no pagination.
-- [ ] **T5.2** Filters on severity and category, with live counts. Default: everything shown.
-- [ ] **T5.3** Colour swatches for hex values — copy the six-line `swatch` from `report/html.js:11-14`
+- [x] **T5.2** Filters on severity and category, with live counts. Default: everything shown.
+- [x] **T5.3** Colour swatches for hex values — copy the six-line `swatch` from `report/html.js:11-14`
       rather than reinventing the regex.
-- [ ] **T5.4** Surface `meta` from `findings.json` above the table (viewport width, tolerance profile,
+- [x] **T5.4** Surface `meta` from `findings.json` above the table (viewport width, tolerance profile,
       generated-at) — it is what makes the numbers reproducible.
-- [ ] **T5.5** `DownloadBar.tsx` — **Download Markdown**, **Download HTML**, **View Raw Findings**.
+- [x] **T5.5** `DownloadBar.tsx` — **Download Markdown**, **Download HTML**, **View Raw Findings**.
       Markdown/HTML hit the download endpoints; Raw Findings opens the table, with a JSON download
       alongside it.
-- [ ] **T5.6** Hide (don't disable-with-no-explanation) a download whose artifact doesn't exist —
+- [x] **T5.6** Hide (don't disable-with-no-explanation) a download whose artifact doesn't exist —
       `result.files` carries the booleans.
-- [ ] **T5.7** Verify all three download and open correctly, and that `report.html` still renders
+- [x] **T5.7** Verify all three download and open correctly, and that `report.html` still renders
       standalone with no network. Commit.
+
+> **Gate — met.** All three artifacts return `200` with correct content types and `Content-Disposition`:
+> `report.md` (7.4 kB, all five `##` headings intact), `report.html` (71.7 kB), `findings.json`
+> (75.9 kB, parses, 95 findings). The table renders 95 rows with swatches and a sticky header; filters
+> measured live at 95 → 14 (High) → 7 (High + colour) → 95 cleared. No horizontal overflow.
+>
+> **`report.html` self-containment verified by inspection, not assumption:** 0 `src=`, 0 `<link>`,
+> 0 `<script>`, 0 `@import`, 0 `url()`, 0 `<img>`. The single `https://` reference is an `href`
+> hyperlink to the audited page — navigation the reader may choose, not a resource the document loads.
+> (`file://` could not be opened through the browser extension, so this was checked at the markup level.)
+
+**Fixed while verifying:** the notes column printed `×35 · 35 occurrences` — the occurrence count and
+the engine's own severity justification saying the same thing twice. The count now yields when a
+severity reason already states it.
 
 ---
 
