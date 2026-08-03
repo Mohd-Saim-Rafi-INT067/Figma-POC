@@ -1,0 +1,68 @@
+{
+  "name": "default",
+  "version": 2,
+  "description": "V1 section-level tolerances. Data, never constants in code - this file becomes a design_tolerance_profiles row on port.",
+
+  "_deltaEUnits": "deltaEOK is OKLab euclidean distance x100, so these read on roughly the same scale as classic CIE deltaE. See src/ir/color.js.",
+
+  "rules": {
+    "renderedFontFamily": { "match": "exact",    "severity": "critical" },
+    "fontFamily":         { "match": "exact",    "severity": "high" },
+    "fontSizePx":         { "match": "exact",    "severity": "high" },
+    "fontWeight":         { "match": "exact",    "severity": "high" },
+    "color":              { "match": "deltaEOK", "tolerance": 2.0,  "severity": "high" },
+    "backgroundColor":    { "match": "deltaEOK", "tolerance": 2.0,  "severity": "high" },
+    "lineHeightPx":       { "match": "abs",      "tolerance": 1.5,  "severity": "medium" },
+    "letterSpacingPx":    { "match": "abs",      "tolerance": 0.2,  "severity": "low" },
+    "gapMeasured":        { "match": "abs",      "tolerance": 2,    "severity": "medium" },
+    "paddingMeasured":    { "match": "abs",      "tolerance": 2,    "severity": "medium" },
+    "boxRelative.size":   { "match": "absOrPct", "tolerance": 2, "pct": 0.01, "severity": "medium" },
+    "boxRelative.pos":    { "match": "abs",      "tolerance": 2,    "severity": "medium" },
+    "border.radius":      { "match": "abs",      "tolerance": 1,    "severity": "low" },
+    "border.width":       { "match": "abs",      "tolerance": 0.5,  "severity": "medium" },
+    "shadow.geometry":    { "match": "abs",      "tolerance": 2,    "severity": "low" },
+    "shadow.color":       { "match": "deltaEOK", "tolerance": 3.0,  "severity": "low" },
+    "opacity":            { "match": "abs",      "tolerance": 0.02, "severity": "low" }
+  },
+
+  "_section": "V1 section-level thresholds. HEIGHT GATES ON THE ABSOLUTE RATIO (web_px / figma_px), not the normalized one - both sides render at the SAME viewport width (enforced by config, parent doc 3.1), so pixel heights are directly comparable. Measured on the real page: median absolute ratio 1.06 with 8/18 sections inside +/-10%, versus median normalized ratio 0.87 with only 1/18 inside - normalizing divides the 1.21x total-height difference into every section and would flag 17 of 18 as wrong. Normalized values are retained for POSITION, where cumulative offset genuinely does drift.",
+  "section": {
+    "heightRatio":      { "tolerance": 0.10, "severity": "medium", "_basis": "absolute web_px / figma_px" },
+    "heightNormalized": { "tolerance": 0.15, "severity": "low",    "gating": false, "_basis": "reported for context only" },
+    "offsetRatio":      { "tolerance": 0.05, "severity": "medium", "_basis": "normalized - cumulative offset drifts" },
+    "backgroundColor":  { "match": "deltaEOK", "tolerance": 2.0, "severity": "high" },
+    "paletteExtra":     { "severity": "medium" },
+    "paletteMissing":   { "severity": "low" },
+    "fontFamilySet":    { "match": "exact", "severity": "high" },
+    "fontSizeSet":      { "tolerance": 1,   "severity": "medium" },
+    "fontWeightSet":    { "match": "exact", "severity": "medium" },
+    "spacingScale":     { "tolerance": 2,   "severity": "medium" },
+    "radiusSet":        { "tolerance": 1,   "severity": "low" },
+    "densityRatio":     { "tolerance": 0.35, "severity": "low" }
+  },
+
+  "_matching": "S2 section alignment. Order-preserving (Needleman-Wunsch) with gaps, so a designed-but-unbuilt section reports as a gap instead of corrupting the alignment. textAnchors is the ONLY place text is used - it never reaches a finding.",
+  "matching": {
+    "weights": { "position": 0.35, "height": 0.25, "textAnchors": 0.30, "digest": 0.10 },
+    "gapPenalty": 0.6,
+    "confidenceFloor": 0.45,
+    "_doNotTune": "Do not tune these before reading the first real alignment. Fitting weights to a guess about the 18-vs-19 section gap is how matchers get overfitted to one page."
+  },
+
+  "_segmentation": "S1 thresholds for what counts as a section.",
+  "segmentation": {
+    "decorativeStripMaxHeight": 24,
+    "minSectionHeight": 24,
+    "minWidthFraction": 0.6
+  },
+
+  "_warnBand": "Parent doc 6.6: each property has a warn band at 2x tolerance producing non-gating 'drift' findings.",
+  "warnBandMultiplier": 2,
+
+  "_superseded": "Removed in V1: `gates` (hygiene + token discipline), `inferredToken` (tier-3 thresholds) and `anchorProbe`. All three served the correspondence-free token audit, which V1 replaces with direct section-to-section comparison - the matched Figma section IS the reference, so no abstracted token set or authority tier is needed. Restore from docs/poc-implementation-plan.md if a standalone token-conformance audit is ever wanted.",
+
+  "_severityUpgrade": "Parent doc 9.3. A finding seen many times is systemic, not incidental.",
+  "severity": {
+    "occurrenceUpgradeThreshold": 10
+  }
+}

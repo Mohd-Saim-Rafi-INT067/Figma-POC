@@ -1,0 +1,20 @@
+{
+  "name": "figma-parity-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 1 POC for Evertest Figma design parity - correspondence-free token audit",
+  "type": "module",
+  "main": "src/cli.js",
+  "scripts": {
+    "audit": "node src/cli.js",
+    "extract:web": "node src/cli.js --web-only",
+    "extract:figma": "node src/cli.js --figma-only",
+    "test": "node --test test/*.test.js",
+    "validate": "node fixtures/run.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "dotenv": "^17.2.3",
+    "playwright": "^1.57.0"
+  }
+}
