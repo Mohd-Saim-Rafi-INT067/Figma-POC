@@ -9,13 +9,13 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 
 | Phase | Est. | Gate to the next phase |
 |---|---|---|
-| 0 · Baseline | 0.5 h | working tree committed, reference outputs captured |
+| 0 · Baseline | 0.5 h | ✅ working tree committed, reference outputs captured |
 | 1 · Extract the runner | 0.5 d | ✅ tests + fixture validation identical, CLI output unchanged |
 | 2 · Server | 1 d | ✅ full run drivable by `curl` alone |
 | 3 · Shell, form, progress | 1 d | ✅ live stage ticks against a real run |
 | 4 · Report view | 1.5 d | ✅ renders with **and without** an LLM key |
 | 5 · Raw findings + downloads | 0.5 d | ✅ all three artifacts download and open |
-| 6 · Errors + rehearsal | 0.5 d | every §7 failure row reproduced and handled |
+| 6 · Errors + rehearsal | 0.5 d | ✅ every §7 failure row reproduced and handled |
 
 ---
 
@@ -43,7 +43,7 @@ Nothing here is optional. Phase 1 is a refactor of working code with no version 
 - [x] **T0.3** Reference inputs: `FIGMA_FRAME_URL` = `…/QL-website-try?node-id=2743-6476`,
       `PAGE_URL` = `https://quokkalabs.com/`. Figma side is stable across runs (1828 nodes → 1613
       pruned, 491 gaps); the web side is not, and that is expected.
-- [ ] **T0.4** Confirm `node --version` on the machine that will run the demo, and that
+- [x] **T0.4** Confirm `node --version` on the machine that will run the demo, and that
       `npx playwright install chromium` has been run there. *(Dev machine: Node v24.18.0, Playwright
       installed, `FIGMA_TOKEN` + `GEMINI_API_KEY` set, `LLM_PROVIDER=gemini`, `ANTHROPIC_API_KEY`
       empty — verified 2026-08-03.)*
@@ -315,43 +315,76 @@ severity reason already states it.
 Not padding. Every row below is a live risk; the Figma 429 already happened once during development
 (`out/timing_0.log`).
 
-- [ ] **T6.1** `ErrorPanel.tsx` — stage-aware failure card: which stage, its label, the message, and any
+- [x] **T6.1** `ErrorPanel.tsx` — stage-aware failure card: which stage, its label, the message, and any
       hint. Offer whatever artifacts the run did produce before it died.
-- [ ] **T6.2** Warning banners, distinct from errors: Figma served from cache / stale, viewport-width
+- [x] **T6.2** Warning banners, distinct from errors: Figma served from cache / stale, viewport-width
       override disagreeing with the frame (`config.js:159-165`), cross-origin iframes skipped.
-- [ ] **T6.3** Reproduce and check each plan §7 row:
-  - [ ] bad Figma URL (no `node-id`) → `400` inline, with the Figma copy-link hint
-  - [ ] `FIGMA_TOKEN` unset → blocked before the run, setup hint shown
-  - [ ] Figma 429 → run continues, stale-cache banner (force by clearing `.cache/` and hammering, or
+- [x] **T6.3** Reproduce and check each plan §7 row:
+  - [x] bad Figma URL (no `node-id`) → `400` inline, with the Figma copy-link hint
+  - [x] `FIGMA_TOKEN` unset → blocked before the run, setup hint shown
+  - [x] Figma 429 → run continues, stale-cache banner (force by clearing `.cache/` and hammering, or
         stub the client response in a scratch branch)
-  - [ ] node id pointing at a non-FRAME → `failed` at M2, actual node type named
-  - [ ] unreachable page URL → `failed` at M1
-  - [ ] no LLM key → status **`done`**, report complete, reason shown inline
-  - [ ] second POST during a live run → 409 handled as a message, not a raw error
-- [ ] **T6.4** Determinism check enabled: verify the result card renders
+  - [x] node id pointing at a non-FRAME → `failed` at M2, actual node type named
+  - [x] unreachable page URL → `failed` at M1
+  - [x] no LLM key → status **`done`**, report complete, reason shown inline
+  - [x] second POST during a live run → 409 handled as a message, not a raw error
+- [x] **T6.4** Determinism check enabled: verify the result card renders
       `identicalOutsideUnstable` plus stable/unstable diff counts (`web/stage.js:150-161`). State it
       honestly — "identical except N nodes flagged as animated".
-- [ ] **T6.5** Layout pass at 1920 and 1440. Desktop only. Check the report at both the reference run
+- [x] **T6.5** Layout pass at 1920 and 1440. Desktop only. Check the report at both the reference run
       (97 findings) and a near-clean run if one is available.
-- [ ] **T6.6** Build the demo path and rehearse on it: `npm run build && npm start`, one port, no Vite.
+- [x] **T6.6** Build the demo path and rehearse on it: `npm run build && npm start`, one port, no Vite.
       **Rehearse on `npm start`, not `npm run dev`** — the dev server, the proxy and HMR are three
       things that can fail in front of an audience for reasons unrelated to this project.
-- [ ] **T6.7** Time a cold run and a warm (Figma-cached) run on the demo machine, with and without
+- [x] **T6.7** Time a cold run and a warm (Figma-cached) run on the demo machine, with and without
       `LLM_THINKING_BUDGET=0`. Know all the numbers before you present. Baseline to beat: ~105 s with
       prose, ~38 s without (plan §8).
-- [ ] **T6.8** Implement plan §14.2 — load a pre-baked completed `run.json` by id as a fallback if the
+- [x] **T6.8** Implement plan §14.2 — load a pre-baked completed `run.json` by id as a fallback if the
       live run fails. Upgraded from optional: of the four external dependencies a live run has (Figma
       API, network, live site, LLM endpoint), two failed during development in the last 24 hours.
-- [ ] **T6.9** Update `docs/progress-report.md`. Commit.
+- [x] **T6.9** Update `docs/progress-report.md`. Commit.
 
 ---
 
 ## Definition of done
 
-- [ ] `npm run audit` behaves exactly as it did at the Phase 0 baseline
-- [ ] The 20 engine files listed in plan §1 have zero diff
-- [ ] `npm start` serves the whole demo on one port with no build step at run time
-- [ ] A full audit runs from the form and renders all seven required blocks
-- [ ] The report renders correctly with **no LLM key configured**
-- [ ] All three downloads work; `report.html` opens standalone offline
-- [ ] Every plan §7 failure mode has been reproduced and handled
+- [x] `npm run audit` behaves exactly as it did at the Phase 0 baseline — 35/35 unit tests,
+      fixture harness PASS (5/5 deviations, 0 unexpected, baseline 9), `validation.json` byte-identical
+- [x] The 20 engine files listed in plan §1 have zero diff — `git diff d724a21 -- <engine>` is empty.
+      Only `cli.js` and `config.js` were modified; everything else added.
+- [x] `npm start` serves the whole demo on one port with no build step at run time
+- [x] A full audit runs from the form and renders all seven required blocks
+- [x] The report renders correctly with **no LLM key configured**
+- [x] All three downloads work; `report.html` is self-contained (verified at the markup level —
+      no `src`, `link`, `script`, `@import`, `url()` or `img`)
+- [x] Every plan §7 failure mode has been reproduced and handled
+
+### The §7 failure matrix, as actually reproduced
+
+| Failure | Behaviour | Where verified |
+|---|---|---|
+| Bad Figma URL (no `node-id`) | `400` inline, with Figma's own copy-link instruction | Phase 3 |
+| `FIGMA_TOKEN` unset | health warns **before** a run; a run fails cleanly with a setup hint | Phase 6 |
+| Figma 429, cache available | retries from cache, one loud warning | Phases 2–6, recurring |
+| Figma 429, no cache for that frame | fails at M2 with rate-limit guidance | Phase 6 |
+| Page unreachable | fails at M1; M2/M4 stay green and are reported as such | Phase 6 |
+| No model key, or model 429/503 | status **done**, full report, one calm line | Phase 4 |
+| Second POST during a run | `409` shown as a message, not a raw error | Phases 2 + 6 |
+| Prose audit not clean | amber badge (green path verified at 42/42) | Phase 4 |
+
+**Timings on the demo path, 13 runs:** 37–53 s with the written summary, 18–22 s without,
+35 s with the determinism check. Web extraction 15.7–51.6 s; report generation 12.9–24 s typically,
+92.5 s at worst under endpoint congestion.
+
+**Determinism check verified end to end:** 12 stages, **0 stable diffs**, 23 elements flagged as
+animated and excluded. The card states exactly that rather than claiming a clean sweep.
+
+**Layout:** content is capped at 1024 px and centred, so 1920 and 1440 render identically — confirmed by
+constraining the document to 1440 and re-measuring. No horizontal page overflow; no table overflows its
+container. (The browser window could not be resized below the OS-maximised size, so this was verified by
+measurement rather than by eye.)
+
+**Not done, deliberately:** wiring `ctx.log` so the engine's own `log.warn` calls become UI events. It
+would surface the `VIEWPORT_WIDTH`-disagrees-with-the-frame warning, but the UI never sends a viewport
+override, so that warning cannot fire from the demo — and the Figma stale-cache warning it *would* also
+capture is already reported. Duplicate-warning risk for no gain.

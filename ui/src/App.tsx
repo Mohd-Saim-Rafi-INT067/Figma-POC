@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuditForm, type FormValues } from './components/AuditForm';
 import { ProgressPanel } from './components/ProgressPanel';
 import { ReportView } from './components/ReportView';
+import { ErrorPanel } from './components/ErrorPanel';
 import { getHealth, getRun, openEvents, startAudit, RequestFailed } from './api';
 import type { Health, RunEvent, RunRecord, StageRecord } from './types';
 
@@ -203,16 +204,7 @@ function RunSummary({ record, onReset }: { record: RunRecord; onReset: () => voi
         </div>
       ))}
 
-      {record.status === 'failed' && record.error && (
-        <div className="rounded-xl border border-rose-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-rose-900">
-            Audit failed{record.error.stage ? ` at ${record.error.stage}` : ''}
-          </h2>
-          {record.error.stageLabel && <p className="mt-1 text-sm text-slate-500">{record.error.stageLabel}</p>}
-          <p className="mt-3 text-sm text-slate-800">{record.error.message}</p>
-          {record.error.hint && <p className="mt-2 text-sm text-slate-500">{record.error.hint}</p>}
-        </div>
-      )}
+      {record.status === 'failed' && <ErrorPanel record={record} />}
 
       {record.status === 'done' && <ReportView record={record} />}
 

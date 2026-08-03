@@ -152,6 +152,8 @@ export interface RunRecord {
   };
   stages: StageRecord[];
   warnings: { stage: string; message: string }[];
+  /** Present on failed runs: what the run wrote before it stopped. */
+  artifacts?: RunResult['files'] | null;
   error: {
     stage: string | null;
     stageLabel?: string | null;

@@ -81,6 +81,20 @@ function makeEventHandler(id) {
           runs.patchMeta(id, { viewportWidth: event.info.width, frameName: event.info.frame ?? null });
         }
 
+        // Cross-origin iframes cannot be measured - the browser will not let
+        // us read into them. That is a silent gap in coverage, so it is
+        // reported rather than left for someone to discover by noticing a
+        // region with suspiciously few findings.
+        if (event.id === 'M1' && event.info?.xOriginIframes) {
+          const n = event.info.xOriginIframes;
+          record.warnings.push({
+            stage: 'M1',
+            message:
+              `${n} cross-origin iframe${n === 1 ? '' : 's'} could not be measured - the browser does not ` +
+              'allow reading into them. Anything rendered inside is excluded from this audit.',
+          });
+        }
+
         // M2 reports whether the Figma data came from a stale cache. The UI
         // needs this prominently: a stale design means the audit compared
         // against something other than what is on screen in Figma.
@@ -129,6 +143,22 @@ function makeEventHandler(id) {
   };
 }
 
+/**
+ * Which artifacts exist on disk for a run.
+ *
+ * Needed on the FAILURE path as much as the success one: a run that died at S5
+ * still wrote findings.json, and offering it is more use to a developer than a
+ * bare error page. `result` is null when a run fails, so this is reported
+ * separately.
+ */
+function artifactsOnDisk(dir) {
+  return {
+    markdown: existsSync(join(dir, 'report.md')),
+    html: existsSync(join(dir, 'report.html')),
+    findings: existsSync(join(dir, 'findings.json')),
+  };
+}
+
 /** Build the client-facing result from the finished ctx. */
 function buildResult(ctx) {
   const { analysis, assembled, alignment, prose, config } = ctx;
@@ -172,11 +202,7 @@ function buildResult(ctx) {
     alignmentStats: alignment?.stats ?? null,
     determinism: ctx.diagnostics?.determinism ?? null,
     prose: proseOut,
-    files: {
-      markdown: existsSync(join(dir, 'report.md')),
-      html: existsSync(join(dir, 'report.html')),
-      findings: existsSync(join(dir, 'findings.json')),
-    },
+    files: artifactsOnDisk(dir),
   };
 }
 
@@ -272,6 +298,8 @@ async function executeRun(record) {
     const failed = runs.get(id)?.stages.find((s) => s.status === 'failed');
     runs.update(id, {
       status: 'failed',
+      // Whatever the run managed to write before it died stays downloadable.
+      artifacts: artifactsOnDisk(runs.runDir(id)),
       error: {
         stage: failed?.id ?? null,
         stageLabel: failed?.label ?? null,

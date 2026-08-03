@@ -34,7 +34,38 @@ Parent feature design: `evertest-backend/docs/figma-design-parity.md`.
 **Superseded by the V1 rescope:** token audit (M7a), token authority tiers incl. the Tier 2.5
 question, the M8 anchor-feasibility probe, and the "byte-identical IR" determinism goal.
 
-**Scope reminder:** this POC is parent-doc Phase 1 only — the correspondence-free token audit. No node matching, no pairwise comparison, no LLM, no Supabase, no React UI. See plan §1.2.
+### Demo UI (`docs/demo-ui-implementation-plan.md`, tracker `docs/demo-ui-task-list.md`)
+
+Added 2026-08-03 so the working engine can be shown to senior management. An orchestration layer only —
+**the comparison engine has zero diff throughout**, verified per phase.
+
+| Phase | Status |
+|---|---|
+| 0 — Baseline | ✅ git initialised and pushed; deterministic gate established (see below) |
+| 1 — Extract the runner | ✅ `pipeline/run.js` owns the stage list; CLI and server are its two callers |
+| 2 — Server | ✅ Express + run registry + SSE + downloads; full audit drivable by `curl` alone |
+| 3 — Shell, form, progress | ✅ React/Vite/Tailwind; live stage ticks verified in a real browser |
+| 4 — Report view | ✅ renders **with and without** a model key; colour computed and contrast-measured |
+| 5 — Raw findings + downloads | ✅ 95-row filterable table; all three artifacts download and open |
+| 6 — Errors + rehearsal | ✅ every failure mode in plan §7 reproduced against a live server |
+
+**The Phase 1 gate had to be rewritten.** The plan asked for a byte-identical `findings.json`, which is
+unachievable when `PAGE_URL` is a live site — two runs minutes apart legitimately differed (1273 vs 1224
+pruned web nodes, 97 vs 95 findings). The honest deterministic gate is `npm test` (35/35) plus
+`npm run validate` producing a **byte-identical `out/validation.json`**, since that harness builds its
+page from the design itself and has no live-site variance. That gate held at every phase.
+
+**Measured on the demo path** (`npm start`, Express serving `ui/dist`, one port, 13 runs): **37–53 s**
+with the written summary, **18–22 s** without it, **35 s** with the determinism check. Web extraction is
+15.7–51.6 s; report generation is 12.9–24 s typically but reached 92.5 s under endpoint congestion.
+
+**Three external dependencies failed during the build and are now handled rather than hoped about:**
+Figma rate-limiting (retry from cache, loudly warned), the model endpoint returning 503 and then
+exhausting its quota (report renders complete without prose), and a run that dies mid-pipeline (its
+partial artifacts stay downloadable).
+
+**Scope reminder:** the *engine* remains parent-doc Phase 1 only — section-level comparison, no node
+matching, no pairwise comparison, no Supabase. The React UI above is a demo wrapper, not a scope change.
 
 ---
 

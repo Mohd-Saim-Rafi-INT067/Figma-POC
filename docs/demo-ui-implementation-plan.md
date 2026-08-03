@@ -292,29 +292,37 @@ and offering it is more useful than a bare error page.
 
 The twelve stages, with demo-facing labels:
 
-| Stage | Engine label | UI label | Measured (2 runs) |
+| Stage | Engine label | UI label | Measured (13 runs) |
 |---|---|---|---|
-| M2 | Figma extraction (REST + cache) | Extracting Figma | 0.9 s cached · 7.7 s live |
+| M2 | Figma extraction (REST + cache) | Extracting Figma | 0.3 s cached · up to 7.7 s live |
 | M4 | Figma normalizer → IR | Normalizing design | 53–110 ms |
-| M1 | Web extraction (Playwright + CDP) | Extracting Website | **14.0 s – 51.6 s** |
+| M1 | Web extraction (Playwright + CDP) | Extracting Website | **15.7 s – 51.6 s** |
 | M3 | Web normalizer → IR | Normalizing website | 113–325 ms |
-| DET | Determinism self-check | Determinism check *(off by default)* | ≈ another M1 |
+| DET | Determinism self-check | Determinism check *(off by default)* | **15.6 s** |
 | P5 | Pruning & canonicalization | Pruning | 15–43 ms |
 | P6 | Measured spacing derivation | Spacing derivation | 87–158 ms |
 | S1 | Section segmentation | Section Detection | 25–74 ms |
 | S2 | Section matching (aligned) | Matching | 15–59 ms |
 | S3 | Section comparison | Comparison | 4–15 ms |
 | S4 | Finding assembly | Findings | 2–8 ms |
-| S5 | Report (console + json + LLM) | Report Generation | **90.1 s / 92.5 s** |
+| S5 | Report (console + json + LLM) | Report Generation | **12.9 – 24.0 s typical · 90 s+ when the endpoint is congested · <1 s when the model call fails** |
 
-Measured from `out/runO.log` (2026-08-03, cached Figma) and `out/newtoken.log` (2026-08-03, live Figma
-fetch, `LLM_THINKING_BUDGET=0`). **Total: ~105 s and ~152 s.** Three consequences for the UI:
+**End-to-end totals, measured across thirteen runs on the demo path:**
 
-1. **S5 is the longest stage, not M1, and it cannot be configured away.** The LLM call dominates at
-   90.1 s and 92.5 s across two runs — and the second of those had thinking *disabled*, so the
-   `LLM_THINKING_BUDGET` lever does not touch it (§8.1). Even the run where the call *failed* with a
-   503 spent 23.4 s in S5. Any design treating web extraction as "the slow bit" and report generation
-   as a quick finish will look broken.
+| Configuration | Total |
+|---|---|
+| With written summary | **37 – 53 s** |
+| With summary, endpoint congested | up to ~150 s |
+| No summary (no key, or model unavailable) | **18 – 22 s** |
+| With the determinism check | **35 s** |
+
+Three consequences for the UI:
+
+1. **S5 is usually the longest stage after M1, and it is the least predictable.** It ranged from 12.9 s
+   to 92.5 s on the same prompt shape. The two ~90 s runs sat in the same window that later produced a
+   `503 UNAVAILABLE` and then a quota exhaustion, so treat them as congestion rather than the norm —
+   but design for them, because they will happen again and there is no configuration that prevents it
+   (§8.1). Any design treating report generation as a quick finish will look broken when it isn't.
 
 2. **Figma is extracted before the website, and the UI must show it in that order.** It looks
    backwards, but the frame's own width sets the browser viewport (`config.js:143-168`,
@@ -384,9 +392,11 @@ The setting **is** honoured (thought tokens drop to zero), but it buys ~0.9 s, a
 thinking on. The cost is in generating ~1,700 output tokens against an 11.2k-token prompt on a
 congested endpoint, not in reasoning. The same window produced a `Gemini 503 UNAVAILABLE`.
 
-Keep `LLM_THINKING_BUDGET=0` — it is free and marginally faster — but **plan the UI around a ~90-second
-S5**, not around a fix. This is what makes the S5 progress message (§8.3) and the pre-baked fallback
-(§14.2) load-bearing rather than nice-to-have.
+Keep `LLM_THINKING_BUDGET=0` — it is free and marginally faster — but **plan the UI around an S5 that
+may take a minute and a half**, not around a fix. Later measurement across thirteen runs put the typical
+figure much lower (12.9–24 s, so ~40 s end to end), which is the number to quote for the demo; the ~90 s
+cases were congestion, and they recur. This is what makes the S5 progress message and the pre-baked
+fallback (§14.2) load-bearing rather than nice-to-have.
 
 ---
 
