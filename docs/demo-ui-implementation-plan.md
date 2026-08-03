@@ -292,36 +292,39 @@ and offering it is more useful than a bare error page.
 
 The twelve stages, with demo-facing labels:
 
-| Stage | Engine label | UI label | Measured |
+| Stage | Engine label | UI label | Measured (2 runs) |
 |---|---|---|---|
-| M2 | Figma extraction (REST + cache) | Extracting Figma | 0.9 s cached · up to ~3 s cold |
-| M4 | Figma normalizer → IR | Normalizing design | 53 ms |
-| M1 | Web extraction (Playwright + CDP) | Extracting Website | **14.0 s** |
-| M3 | Web normalizer → IR | Normalizing website | 113 ms |
-| DET | Determinism self-check | Determinism check *(off by default)* | **~14 s** |
-| P5 | Pruning & canonicalization | Pruning | 15 ms |
-| P6 | Measured spacing derivation | Spacing derivation | 87 ms |
-| S1 | Section segmentation | Section Detection | 25 ms |
-| S2 | Section matching (aligned) | Matching | 15 ms |
-| S3 | Section comparison | Comparison | 4 ms |
-| S4 | Finding assembly | Findings | 2 ms |
-| S5 | Report (console + json + LLM) | Report Generation | **23 s – 90 s** |
+| M2 | Figma extraction (REST + cache) | Extracting Figma | 0.9 s cached · 7.7 s live |
+| M4 | Figma normalizer → IR | Normalizing design | 53–110 ms |
+| M1 | Web extraction (Playwright + CDP) | Extracting Website | **14.0 s – 51.6 s** |
+| M3 | Web normalizer → IR | Normalizing website | 113–325 ms |
+| DET | Determinism self-check | Determinism check *(off by default)* | ≈ another M1 |
+| P5 | Pruning & canonicalization | Pruning | 15–43 ms |
+| P6 | Measured spacing derivation | Spacing derivation | 87–158 ms |
+| S1 | Section segmentation | Section Detection | 25–74 ms |
+| S2 | Section matching (aligned) | Matching | 15–59 ms |
+| S3 | Section comparison | Comparison | 4–15 ms |
+| S4 | Finding assembly | Findings | 2–8 ms |
+| S5 | Report (console + json + LLM) | Report Generation | **90.1 s / 92.5 s** |
 
-Measured from `out/runO.log` (full run with prose, 2026-08-03) and `out/timing_0.log` (same run,
-prose failed). **Total: ~105 s with prose, ~38 s without.** Three consequences for the UI:
+Measured from `out/runO.log` (2026-08-03, cached Figma) and `out/newtoken.log` (2026-08-03, live Figma
+fetch, `LLM_THINKING_BUDGET=0`). **Total: ~105 s and ~152 s.** Three consequences for the UI:
 
-1. **S5 is the longest stage, not M1.** The LLM call dominates: 90.1 s on the last successful run
-   (11,203 in / 1,921 out on `gemini-3.5-flash`), and 23.4 s even on the run where the call *failed*
-   with a 503. Any design that treats web extraction as "the slow bit" and S5 as a quick finish will
-   look broken. See §8.1 for the lever that shortens it.
+1. **S5 is the longest stage, not M1, and it cannot be configured away.** The LLM call dominates at
+   90.1 s and 92.5 s across two runs — and the second of those had thinking *disabled*, so the
+   `LLM_THINKING_BUDGET` lever does not touch it (§8.1). Even the run where the call *failed* with a
+   503 spent 23.4 s in S5. Any design treating web extraction as "the slow bit" and report generation
+   as a quick finish will look broken.
 
 2. **Figma is extracted before the website, and the UI must show it in that order.** It looks
    backwards, but the frame's own width sets the browser viewport (`config.js:143-168`,
    `figma/stage.js:51-53`) — M2 *must* precede M1. Reordering the display to "look right" would
    misrepresent the pipeline in a demo where someone may well ask why.
 
-3. **No percentage-of-stages progress bar.** Nine of the twelve stages finish in under 120 ms; a
+3. **No percentage-of-stages progress bar.** Nine of the twelve stages finish in under 350 ms; a
    stage-count bar jumps to ~85% and then sits still for a minute and a half, which reads as a hang.
+   M1 also varies by a factor of 3.7 between runs (14.0 s vs 51.6 s on the same page), so any
+   time-remaining estimate would be wrong often enough to be worse than none.
    Instead: a stage checklist, ticks appearing instantly for the fast ones, and an indeterminate
    spinner with a live elapsed counter on M1, DET and S5. Attach each stage's `info` (`nodes=3183`,
    `scrollHeight=23991`, `findings=97`) next to the tick as it completes — that detail is what makes
@@ -334,26 +337,56 @@ enabled, show its result as its own card — `identicalOutsideUnstable`, stable 
 (`web/stage.js:150-161`). That states the static-content-first position honestly — "identical except for
 N nodes we flagged as animated" — and it is a better story than a number claiming perfection.
 
-### 8.1 Two live conditions to settle before the demo
+### 8.1 Two live conditions, both measured 2026-08-03
 
-Both are current state on this machine, found while checking readiness. Neither is a code defect and
-neither blocks implementation, but both shape the demo.
+Neither is a code defect and neither blocks implementation, but both shape the demo.
 
-**The Figma token is rate-limited.** The two most recent runs both hit `Figma API 429` with
-`Retry-After ≈ 66,751 s` (~18.5 hours), and completed only because `figma/client.js` fell back to the
-cached file — `cached=true stale=true`. The engine degraded exactly as designed, and the demo will keep
-working for the cached frame. But a **new** frame URL typed live cannot be fetched, and the amber
-"served from cache, may be stale" banner (§7) is not a defensive nicety — it is what the demo will
-actually show. Confirm the quota window has reset before presenting, and treat §14.2 as recommended
-rather than optional.
+**The Figma rate limit is scoped to the account and the endpoint, not the token.** A freshly issued PAT
+was tested against three endpoints:
 
-**S5's 90 seconds is mostly model thinking, and there is an existing knob for it.** `llm.js:135-156`
-reads `LLM_THINKING_BUDGET` from the environment — unset means the model decides, `0` turns thinking
-off — and the code comment records 15.2 s with it on versus 3.0 s with it off on an equivalent prompt.
-Every fact in the prompt is pre-computed, so the model is composing rather than reasoning. Setting
-`LLM_THINKING_BUDGET=0` in `.env` is a **config change, not a code change**, and should be measured
-before Phase 3 so the progress UI is built against realistic numbers. The same window also produced a
-`Gemini 503 UNAVAILABLE`, which is the other reason the prose-optional path (§5.3) has to be real.
+| Endpoint | Result |
+|---|---|
+| `GET /v1/me` | `200` — token valid |
+| `GET /v1/files/:key?depth=1` | **`429`, `Retry-After: 58465`** (~16.2 h) |
+| `GET /v1/files/:key/nodes?ids=…` | `200` — returned the frame in 4.0 s |
+
+So swapping tokens does not clear it. Only the **file-meta** call is limited — and that is precisely
+`getFileMeta` → `resolveVersion` (`client.js:181-230`), whose own comment at `client.js:197-201`
+predicted this as "the single biggest source of rate-limit pressure". The node payload fetches fine.
+
+Consequences, in order:
+
+- The pipeline still completes. `resolveVersion` catches the 429, falls back to
+  `_newestCachedVersion`, and flags `stale=true` — the documented degradation path, working.
+- **`--no-cache` fetches current design data despite the 429**, because it bypasses the node cache and
+  the node endpoint is not limited. Confirmed: `out/newtoken.log` shows `stale=true` *without*
+  `cached=true`. The version *label* is wrong (data is filed under the older version key), the data is
+  not.
+- Without `--no-cache` the run silently compares against a **stale design**. The cache holds versions
+  `…789583` / `…018159`; the live file is `…478869`, modified 2026-08-03 09:39. That gap is invisible
+  in the output except for the `stale=true` flag — which is exactly why the amber banner in §7 must
+  be built, and must be prominent.
+- A durable fix exists but is a code change to a frozen file: the `/nodes` response already carries
+  `name`, `lastModified` and `version`, so the separate meta call is avoidable entirely. Out of scope
+  here; worth raising as its own change after the UI ships.
+
+**`LLM_THINKING_BUDGET` does not fix S5 — measured, not assumed.** The hypothesis was that S5's 90 s
+was reasoning tokens, since `llm.js:150-156` records 15.2 s → 3.0 s with thinking off. It was tested
+directly against the API:
+
+| `thinkingBudget` | Latency | Output | Thought tokens |
+|---|---|---|---|
+| `0` | 2.6 s | 173 | **0** |
+| unset | 3.5 s | 154 | 580 |
+
+The setting **is** honoured (thought tokens drop to zero), but it buys ~0.9 s, and a full run with
+`LLM_THINKING_BUDGET=0` still spent **92.5 s** in S5 — marginally *worse* than the 90.1 s run with
+thinking on. The cost is in generating ~1,700 output tokens against an 11.2k-token prompt on a
+congested endpoint, not in reasoning. The same window produced a `Gemini 503 UNAVAILABLE`.
+
+Keep `LLM_THINKING_BUDGET=0` — it is free and marginally faster — but **plan the UI around a ~90-second
+S5**, not around a fix. This is what makes the S5 progress message (§8.3) and the pre-baked fallback
+(§14.2) load-bearing rather than nice-to-have.
 
 ---
 

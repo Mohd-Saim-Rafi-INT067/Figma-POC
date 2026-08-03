@@ -33,13 +33,16 @@ Nothing here is optional. Phase 1 is a refactor of working code with no version 
       `npx playwright install chromium` has been run there. *(Dev machine: Node v24.18.0, Playwright
       installed, `FIGMA_TOKEN` + `GEMINI_API_KEY` set, `LLM_PROVIDER=gemini`, `ANTHROPIC_API_KEY`
       empty — verified 2026-08-03.)*
-- [ ] **T0.5** Set `LLM_THINKING_BUDGET=0` in `.env` and time one run. S5 measured 90 s with thinking
-      left to the model (`out/runO.log`); `llm.js:150-156` records 15.2 s → 3.0 s with it off. This is a
-      config change, not a code change, and Phase 3's progress UI should be built against the number it
-      produces. Record the measured S5 here. See plan §8.1.
-- [ ] **T0.6** Check whether the Figma 429 has cleared: both runs on 2026-08-03 hit
-      `Retry-After ≈ 66,751 s` (~18.5 h) and completed only from stale cache. The demo works from cache
-      for the *cached* frame; a newly typed frame URL will not fetch. Confirm before presenting.
+- [x] **T0.5** `LLM_THINKING_BUDGET=0` set in `.env`. **Measured: it does not fix S5.** The setting is
+      honoured (thought tokens → 0) but buys ~0.9 s; a full run with it on still spent 92.5 s in S5,
+      versus 90.1 s with thinking enabled. Build the progress UI around a ~90 s S5. Plan §8.1.
+- [x] **T0.6** Figma 429 re-checked with a **new token**: still limited, `Retry-After ≈ 58,465 s`
+      (~16.2 h). The limit is scoped to the **account and endpoint**, not the token — only
+      `/v1/files/:key` (the version check) is blocked; `/v1/files/:key/nodes` returns `200`. Plan §8.1.
+- [ ] **T0.7** Decide the default for the demo: **run with `--no-cache`**. Without it the audit silently
+      compares against a stale cached design (cache holds `…018159`, live file is `…478869`). With it,
+      current design data is fetched despite the 429. Wire the server to pass `noCache: true` in T2.5,
+      or make it an Advanced toggle alongside the determinism checkbox.
 
 ---
 
