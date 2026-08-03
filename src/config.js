@@ -95,7 +95,32 @@ function intOrNull(value, label) {
   return Math.round(n);
 }
 
-export function resolveConfig({ toleranceProfile = 'default' } = {}) {
+/**
+ * @param {object} [opts]
+ * @param {string} [opts.toleranceProfile]
+ * @param {string} [opts.figmaFrameUrl]  overrides FIGMA_FRAME_URL - the UI supplies this per request
+ * @param {string} [opts.pageUrl]        overrides PAGE_URL
+ * @param {string} [opts.outDir]         overrides <root>/out - one directory per run, so concurrent
+ *                                       or successive runs cannot overwrite each other's artifacts
+ * @param {number} [opts.viewportWidth]  overrides VIEWPORT_WIDTH (still only an override; null
+ *                                       auto-derives from the frame after M2)
+ *
+ * Every option falls back to the environment variable it replaces, so a caller
+ * that passes nothing - the CLI - behaves exactly as before.
+ *
+ * CREDENTIALS ARE NOT PARAMETERS. FIGMA_TOKEN and the LLM keys are read from the
+ * environment only, and deliberately so: the HTTP layer must be able to choose
+ * WHAT to audit without being able to choose WHOSE credentials to audit it with.
+ * That boundary is where per-user Figma OAuth plugs in when this ports to
+ * Evertest - see docs/demo-ui-implementation-plan.md §3.1 and §13.1.
+ */
+export function resolveConfig({
+  toleranceProfile = 'default',
+  figmaFrameUrl,
+  pageUrl: pageUrlOverride,
+  outDir: outDirOverride,
+  viewportWidth,
+} = {}) {
   const token = process.env.FIGMA_TOKEN;
   if (!token) {
     throw new ConfigError(
@@ -105,7 +130,7 @@ export function resolveConfig({ toleranceProfile = 'default' } = {}) {
     );
   }
 
-  const pageUrl = process.env.PAGE_URL;
+  const pageUrl = pageUrlOverride ?? process.env.PAGE_URL;
   if (!pageUrl) throw new ConfigError('PAGE_URL is not set');
   try {
     new URL(pageUrl);
@@ -113,9 +138,9 @@ export function resolveConfig({ toleranceProfile = 'default' } = {}) {
     throw new ConfigError(`PAGE_URL is not a valid URL: ${pageUrl}`);
   }
 
-  const { fileKey, nodeId } = parseFigmaUrl(process.env.FIGMA_FRAME_URL);
+  const { fileKey, nodeId } = parseFigmaUrl(figmaFrameUrl ?? process.env.FIGMA_FRAME_URL);
 
-  const outDir = resolve(ROOT, 'out');
+  const outDir = outDirOverride ? resolve(outDirOverride) : resolve(ROOT, 'out');
   const cacheDir = resolve(ROOT, '.cache');
   mkdirSync(outDir, { recursive: true });
   mkdirSync(cacheDir, { recursive: true });
@@ -127,7 +152,7 @@ export function resolveConfig({ toleranceProfile = 'default' } = {}) {
     pageUrl,
 
     // null => auto-derive from the frame after M2. See plan 3.2.
-    viewportWidthOverride: intOrNull(process.env.VIEWPORT_WIDTH, 'VIEWPORT_WIDTH'),
+    viewportWidthOverride: intOrNull(viewportWidth ?? process.env.VIEWPORT_WIDTH, 'VIEWPORT_WIDTH'),
     viewportWidth: null,
     viewportHeight: intOrNull(process.env.VIEWPORT_HEIGHT, 'VIEWPORT_HEIGHT') ?? 900,
     deviceScaleFactor: 1,

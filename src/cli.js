@@ -2,57 +2,20 @@
 /**
  * POC entry point.
  *
- * The pipeline is declared as an ordered stage list so that, from Phase 0 onward,
- * `npm run audit` always runs end-to-end and fails with a precise message at the
- * first unimplemented stage - rather than failing on an undefined import and
- * leaving you to work out how far it got.
+ * The pipeline itself lives in pipeline/run.js - this file is the console
+ * rendering of it. It parses flags, prints the header, and turns the runner's
+ * events into the progress lines below. The demo UI server is the other caller
+ * of the same runner, so the stage list has exactly one definition.
  */
 
 import { resolveConfig, ConfigError } from './config.js';
-import { stageFigmaExtract, stageFigmaNormalize } from './figma/stage.js';
-import { stageWebExtract, stageWebNormalize, stageDeterminismCheck } from './web/stage.js';
-import { stagePrune, stageSpacing } from './pipeline/stage.js';
-import { stageSegment, stageMatch, stageCompare } from './sections/stage.js';
-import { stageAssemble, stageReport } from './report/index.js';
+import { runPipeline } from './pipeline/run.js';
 
 const C = {
   reset: '\x1b[0m', dim: '\x1b[2m', bold: '\x1b[1m',
   red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
   blue: '\x1b[34m', cyan: '\x1b[36m',
 };
-
-class NotImplemented extends Error {
-  constructor(stage, file, phase) {
-    super(`Stage ${stage} is not implemented yet`);
-    this.name = 'NotImplemented';
-    this.stage = stage;
-    this.file = file;
-    this.phase = phase;
-  }
-}
-
-const pending = (file, phase) => (ctx, stage) => {
-  throw new NotImplemented(stage.id, file, phase);
-};
-
-/**
- * `sides` marks which of --web-only / --figma-only a stage belongs to.
- * 'both' stages are skipped when either flag narrows the run.
- */
-const STAGES = [
-  { id: 'M2',  side: 'figma', phase: 1, label: 'Figma extraction (REST + cache)',   run: stageFigmaExtract },
-  { id: 'M4',  side: 'figma', phase: 1, label: 'Figma normalizer -> IR',            run: stageFigmaNormalize },
-  { id: 'M1',  side: 'web',   phase: 2, label: 'Web extraction (Playwright + CDP)', run: stageWebExtract },
-  { id: 'M3',  side: 'web',   phase: 2, label: 'Web normalizer -> IR',              run: stageWebNormalize },
-  { id: 'DET', side: 'web',   phase: 2, label: 'Determinism self-check (re-extract)', run: stageDeterminismCheck, optional: true },
-  { id: 'P5',  side: 'both',  phase: 'B', label: 'Pruning & canonicalization',      run: stagePrune },
-  { id: 'P6',  side: 'both',  phase: 'B', label: 'Measured spacing derivation',     run: stageSpacing },
-  { id: 'S1',  side: 'both',  phase: 'C', label: 'Section segmentation',            run: stageSegment },
-  { id: 'S2',  side: 'both',  phase: 'D', label: 'Section matching (aligned)',      run: stageMatch },
-  { id: 'S3',  side: 'both',  phase: 'E', label: 'Section comparison (aggregates)', run: stageCompare },
-  { id: 'S4',  side: 'both',  phase: 'F', label: 'Finding assembly',                run: stageAssemble },
-  { id: 'S5',  side: 'both',  phase: 'F', label: 'Report (console + json + LLM)',   run: stageReport },
-];
 
 function parseArgs(argv) {
   const flags = {
@@ -104,14 +67,39 @@ Config comes from .env - see .env.example.
 `);
 }
 
-function selectStages(flags) {
-  let stages = STAGES;
-  if (flags.figmaOnly) stages = stages.filter((s) => s.side === 'figma');
-  else if (flags.webOnly) stages = stages.filter((s) => s.side === 'web');
-  // The determinism check re-extracts the whole page, so it roughly doubles
-  // web-side runtime. On by default because it is the Phase 2 exit criterion.
-  if (flags.noDeterminism) stages = stages.filter((s) => s.id !== 'DET');
-  return stages;
+/** Renders runner events as the progress lines this CLI has always printed. */
+function printEvent(event) {
+  switch (event.type) {
+    case 'stage:start':
+      process.stdout.write(`  ${C.dim}[${event.id.padEnd(3)}]${C.reset} ${event.label} ... `);
+      break;
+
+    case 'stage:ok': {
+      const info = event.info
+        ? ' ' + C.dim + Object.entries(event.info)
+            .filter(([, v]) => v !== null && v !== undefined && v !== false)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(' ') + C.reset
+        : '';
+      console.log(`${C.green}ok${C.reset} ${C.dim}(${event.ms}ms)${C.reset}${info}`);
+      break;
+    }
+
+    case 'stage:pending':
+      console.log(`${C.yellow}not implemented${C.reset}\n`);
+      console.log(`${C.yellow}${C.bold}Stopped at ${event.id} - ${event.label}${C.reset}`);
+      console.log(`  next file  ${C.bold}${event.file}${C.reset}`);
+      console.log(`  plan phase ${C.bold}${event.phase}${C.reset} ${C.dim}(docs/v1-implementation-plan.md)${C.reset}`);
+      console.log(`\n${C.dim}Everything before this stage ran clean.${C.reset}\n`);
+      break;
+
+    case 'stage:fail':
+      console.log(`${C.red}failed${C.reset}\n`);
+      break;
+
+    default:
+      break;
+  }
 }
 
 async function main() {
@@ -122,7 +110,6 @@ async function main() {
   }
 
   const config = resolveConfig();
-  const stages = selectStages(flags);
 
   console.log(`\n${C.bold}Figma design parity${C.reset} ${C.dim}(V1: section-level)${C.reset}`);
   console.log(`${C.dim}${'-'.repeat(58)}${C.reset}`);
@@ -139,35 +126,9 @@ async function main() {
   console.log(`  tolerance   ${C.cyan}${config.tolerance.name} v${config.tolerance.version}${C.reset}`);
   console.log(`${C.dim}${'-'.repeat(58)}${C.reset}\n`);
 
-  const ctx = { config, flags, snapshots: {}, findings: [], diagnostics: {} };
+  const ctx = await runPipeline(config, flags, { onEvent: printEvent });
 
-  for (const stage of stages) {
-    process.stdout.write(`  ${C.dim}[${stage.id.padEnd(3)}]${C.reset} ${stage.label} ... `);
-    ctx.stageInfo = null;
-    const startedAt = Date.now();
-    try {
-      await stage.run(ctx, stage);
-      const ms = Date.now() - startedAt;
-      const info = ctx.stageInfo
-        ? ' ' + C.dim + Object.entries(ctx.stageInfo)
-            .filter(([, v]) => v !== null && v !== undefined && v !== false)
-            .map(([k, v]) => `${k}=${v}`)
-            .join(' ') + C.reset
-        : '';
-      console.log(`${C.green}ok${C.reset} ${C.dim}(${ms}ms)${C.reset}${info}`);
-    } catch (err) {
-      if (err instanceof NotImplemented) {
-        console.log(`${C.yellow}not implemented${C.reset}\n`);
-        console.log(`${C.yellow}${C.bold}Stopped at ${stage.id} - ${stage.label}${C.reset}`);
-        console.log(`  next file  ${C.bold}${err.file}${C.reset}`);
-        console.log(`  plan phase ${C.bold}${err.phase}${C.reset} ${C.dim}(docs/v1-implementation-plan.md)${C.reset}`);
-        console.log(`\n${C.dim}Everything before this stage ran clean.${C.reset}\n`);
-        return 3;
-      }
-      console.log(`${C.red}failed${C.reset}\n`);
-      throw err;
-    }
-  }
+  if (ctx.outcome.stopped === 'pending') return 3;
 
   console.log(`\n${C.green}${C.bold}Done.${C.reset} Output in ${config.outDir}\n`);
   return 0;

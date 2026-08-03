@@ -10,7 +10,7 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 | Phase | Est. | Gate to the next phase |
 |---|---|---|
 | 0 · Baseline | 0.5 h | working tree committed, reference outputs captured |
-| 1 · Extract the runner | 0.5 d | `npm run audit` byte-identical to baseline |
+| 1 · Extract the runner | 0.5 d | ✅ tests + fixture validation identical, CLI output unchanged |
 | 2 · Server | 1 d | a full run drivable by `curl` alone |
 | 3 · Shell, form, progress | 1 d | live stage ticks against a real run |
 | 4 · Report view | 1.5 d | full report renders **with and without** an LLM key |
@@ -23,12 +23,26 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 
 Nothing here is optional. Phase 1 is a refactor of working code with no version control behind it.
 
-- [ ] **T0.1** `git init`; add `ui/node_modules/`, `ui/dist/` to `.gitignore` (`out/`, `.env`, `.cache/`,
+- [x] **T0.1** `git init`; add `ui/node_modules/`, `ui/dist/` to `.gitignore` (`out/`, `.env`, `.cache/`,
       `node_modules/` are already covered). Commit the current working tree as the baseline.
-- [ ] **T0.2** Capture a reference run: `npm run audit > out/baseline.log 2>&1`. Copy
-      `out/findings.json`, `out/report.md`, `out/report.html` to `out/baseline/`.
-- [ ] **T0.3** Note the run's inputs (`FIGMA_FRAME_URL`, `PAGE_URL`) and its severity counts in a
-      comment on this task — that pair is the fixture every later phase is verified against.
+      *(Done — pushed to `github.com/Mohd-Saim-Rafi-INT067/Figma-POC`.)*
+- [x] **T0.2** Capture a reference baseline.
+      **The original wording — "byte-identical `findings.json`" — was wrong and has been replaced.**
+      `PAGE_URL` is a live site with dynamic content, so two runs minutes apart legitimately differ
+      (measured: web nodes pruned to 1273 vs 1224, 97 vs 95 findings, mean confidence 0.828 vs 0.827).
+      Demanding byte-equality there would fail for reasons unrelated to any refactor — the same point
+      the determinism check already makes about unstable nodes.
+      **The deterministic gate is instead:**
+  - `npm test` → 35/35 pass
+  - `npm run validate` → fixture harness, `out/validation.json` **byte-identical** to
+    `out/baseline/validation.json`. This builds its page *from the Figma design itself*, so it has no
+    live-site variance at all: PASS, 5/5 deviations detected, 0 unexpected, baseline 9.
+  - `out/figma-ir.json` identical to baseline **except `capturedAt`** (the Figma side is cache-backed
+    and deterministic; `capturedAt` is a header timestamp, already stripped by the determinism check)
+  - CLI console output structurally line-for-line unchanged
+- [x] **T0.3** Reference inputs: `FIGMA_FRAME_URL` = `…/QL-website-try?node-id=2743-6476`,
+      `PAGE_URL` = `https://quokkalabs.com/`. Figma side is stable across runs (1828 nodes → 1613
+      pruned, 491 gaps); the web side is not, and that is expected.
 - [ ] **T0.4** Confirm `node --version` on the machine that will run the demo, and that
       `npx playwright install chromium` has been run there. *(Dev machine: Node v24.18.0, Playwright
       installed, `FIGMA_TOKEN` + `GEMINI_API_KEY` set, `LLM_PROVIDER=gemini`, `ANTHROPIC_API_KEY`
@@ -50,35 +64,36 @@ Nothing here is optional. Phase 1 is a refactor of working code with no version 
 
 Goal: one stage list, two consumers. No behavioural change of any kind.
 
-- [ ] **T1.1** Create `src/pipeline/run.js`. Move `STAGES` (`cli.js:42-55`), `class NotImplemented`
-      (`cli.js:24-36`) and `selectStages()` (`cli.js:107-115`) across **verbatim** — no edits, not even
-      cosmetic ones. Export all three.
-- [ ] **T1.2** Add `runPipeline(config, flags, { onEvent })` to `run.js`. Port the loop from
-      `cli.js:144-170`, replacing each `process.stdout.write` / `console.log` with the matching event
-      from the plan §4 contract. Return the finished `ctx`. Build `ctx` exactly as `cli.js:142` does.
-- [ ] **T1.3** In `runPipeline`, catch a stage throw → emit `stage:fail` with `{ name, message, hint }`
-      and stop; catch `NotImplemented` → emit `stage:pending` with `{ file, phase }`. Neither rethrows;
-      the caller decides what a failure means. `ConfigError` from `resolveConfig` is *not* caught here —
-      it happens before the run.
-- [ ] **T1.4** Rewrite `cli.js` to import from `run.js` and subscribe to the events. Keep `parseArgs`,
-      `usage`, the ANSI `C` constants and the header block (`cli.js:127-140`) exactly where they are.
-      The `ok (123ms) nodes=3183 …` suffix is rebuilt in the `stage:ok` handler from `event.info`.
-- [ ] **T1.5** Verify: `npm run audit > out/verify.log 2>&1`, then `diff out/baseline/findings.json
-      out/findings.json` — must be empty. Eyeball `verify.log` against `baseline.log`; only timings and
-      the LLM prose may differ.
-- [ ] **T1.6** Verify the narrow paths still work: `npm run audit -- --figma-only`,
-      `-- --web-only`, `-- --help`, `-- --no-determinism`, and an unknown flag (must still exit 2 with
-      the `ConfigError` formatting).
-- [ ] **T1.7** `resolveConfig` in `config.js` — add the optional `figmaFrameUrl`, `pageUrl`, `outDir`,
-      `viewportWidth` params, each `?? process.env.X`. Apply `outDir` to the existing `mkdirSync`
-      (`config.js:118-121`). `cacheDir` stays shared and is **not** parameterised.
-- [ ] **T1.8** Confirm no credential is reachable from a parameter: `FIGMA_TOKEN`, `GEMINI_API_KEY`,
-      `ANTHROPIC_API_KEY` stay `process.env`-only reads. This is the boundary Evertest OAuth plugs into
-      later — don't soften it for convenience.
-- [ ] **T1.9** Re-run T1.5. Commit.
+- [x] **T1.1** Create `src/pipeline/run.js`. Move `STAGES`, `class NotImplemented` and `selectStages()`
+      across **verbatim**. All three exported. *(Verified: stage-selection matrix identical across all
+      five flag combinations; 12 stages, order unchanged.)*
+- [x] **T1.2** Add `runPipeline(config, flags, { onEvent })` to `run.js`, emitting the plan §4 events.
+      Returns the finished `ctx`.
+- [x] **T1.3** `NotImplemented` → emits `stage:pending` and returns cleanly (`ctx.outcome.stopped =
+      'pending'`), because it is not a failure — everything before it ran. A real stage throw emits
+      `stage:fail` **and then rethrows**.
+      *Deviation from the plan, deliberate:* the plan said neither should rethrow. Rethrowing preserves
+      the CLI's existing exit-code and stack-trace behaviour exactly, which is this phase's gate, and
+      costs the server nothing — it gets the stage id from the event and the error from `try/catch`.
+      `ctx.outcome` carries the same information for callers that prefer to inspect it.
+- [x] **T1.4** `cli.js` rewritten as a console renderer of the events. `parseArgs`, `usage`, the ANSI
+      constants and the header block all retained verbatim; `printEvent` rebuilds the
+      `ok (123ms) nodes=3183 …` suffix from `event.info`.
+- [x] **T1.5** Verified — see T0.2 for the gate as actually applied. Console output structurally
+      line-for-line unchanged against the pre-refactor run.
+- [x] **T1.6** Narrow paths verified: `--figma-only` (exit 0, IR identical), `--web-only` (exit 1 via
+      the real `stage:fail` path, message preserved), `--help` (exit 0), `--no-determinism`,
+      `--bogus` (exit 2, `ConfigError` formatting intact), `--web-only --figma-only` (exit 2).
+- [x] **T1.7** `resolveConfig` takes `figmaFrameUrl`, `pageUrl`, `outDir`, `viewportWidth`, each
+      `?? process.env.X`. `cacheDir` stays shared and is **not** parameterised, so per-run isolation
+      does not cost the Figma cache.
+- [x] **T1.8** Credentials confirmed un-injectable: passing `{ figmaToken, geminiApiKey }` is ignored;
+      `config.figmaToken` still comes from `process.env`. This is the seam Evertest OAuth plugs into.
+- [x] **T1.9** Committed.
 
-> **Gate:** `findings.json` is byte-identical to the baseline and the CLI console output is
-> indistinguishable. If either is false, the refactor was not mechanical — fix before Phase 2.
+> **Gate — met.** `npm test` 35/35 · `out/validation.json` byte-identical to baseline · `figma-ir.json`
+> identical but for `capturedAt` · stage matrix identical · CLI output and all six exit-code paths
+> unchanged.
 
 ---
 
