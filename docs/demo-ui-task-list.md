@@ -11,7 +11,7 @@ finish and verify it before anything else starts. Within a phase, tasks are orde
 |---|---|---|
 | 0 · Baseline | 0.5 h | working tree committed, reference outputs captured |
 | 1 · Extract the runner | 0.5 d | ✅ tests + fixture validation identical, CLI output unchanged |
-| 2 · Server | 1 d | a full run drivable by `curl` alone |
+| 2 · Server | 1 d | ✅ full run drivable by `curl` alone |
 | 3 · Shell, form, progress | 1 d | live stage ticks against a real run |
 | 4 · Report view | 1.5 d | full report renders **with and without** an LLM key |
 | 5 · Raw findings + downloads | 0.5 d | all three artifacts download and open |
@@ -53,10 +53,12 @@ Nothing here is optional. Phase 1 is a refactor of working code with no version 
 - [x] **T0.6** Figma 429 re-checked with a **new token**: still limited, `Retry-After ≈ 58,465 s`
       (~16.2 h). The limit is scoped to the **account and endpoint**, not the token — only
       `/v1/files/:key` (the version check) is blocked; `/v1/files/:key/nodes` returns `200`. Plan §8.1.
-- [ ] **T0.7** Decide the default for the demo: **run with `--no-cache`**. Without it the audit silently
-      compares against a stale cached design (cache holds `…018159`, live file is `…478869`). With it,
-      current design data is fetched despite the 429. Wire the server to pass `noCache: true` in T2.5,
-      or make it an Advanced toggle alongside the determinism checkbox.
+- [x] **T0.7** Decided and implemented: the server defaults to `noCache: true`, **plus a fallback the
+      flag itself does not provide.** During Phase 2 the nodes endpoint started returning 429 as well,
+      and `--no-cache` then has nothing to fall back on — the run died at M2. So `executeRun` catches a
+      Figma rate-limit failure at M2, re-runs with the cache enabled, and records a loud warning. Fresh
+      design data when Figma allows it, a stale-but-honest report when it does not, never a dead run.
+      Implemented in the orchestration layer; `client.js` untouched.
 
 ---
 
@@ -101,47 +103,65 @@ Goal: one stage list, two consumers. No behavioural change of any kind.
 
 Goal: a full audit drivable with `curl` and nothing else. No UI work until this is true.
 
-- [ ] **T2.1** `npm install express`. Create `src/server/index.js` (reads `PORT`, default 5173) and
-      `src/server/app.js`. Add `"server"` / `"start"` scripts to `package.json`.
-- [ ] **T2.2** `src/server/validate.js` — validate `{ figmaFrameUrl, pageUrl, determinism }`. Reuse
+- [x] **T2.1** `npm install express` (v5). Created `src/server/index.js` (reads `PORT`, default 5173)
+      and `src/server/app.js`. `"server"` / `"start"` scripts added.
+- [x] **T2.2** `src/server/validate.js` — validate `{ figmaFrameUrl, pageUrl, determinism }`. Reuse
       `parseFigmaUrl` (`config.js:35`) verbatim for the Figma URL; `new URL()` + `http:`/`https:` for
       the page URL. On `ConfigError`, split the message on `\n  → ` into `{ error, hint }` and return
       `400 { error, hint, field }`.
-- [ ] **T2.3** `src/server/runs.js` — the registry. `create()`, `get(id)`, `update(id, patch)`,
+- [x] **T2.3** `src/server/runs.js` — the registry. `create()`, `get(id)`, `update(id, patch)`,
       `activeRun()`. In-memory `Map`, mirrored to `out/runs/<id>/run.json` on every status transition.
       Record shape per plan §5.2. Run ids: short, URL-safe, sortable (timestamp + 4 random chars).
-- [ ] **T2.4** `POST /api/audit` — validate, reject with `409 { activeRunId }` if a run is live,
+- [x] **T2.4** `POST /api/audit` — validate, reject with `409 { activeRunId }` if a run is live,
       create the record, respond `202 { runId }` **immediately**, then start the run in the background.
       Do not await the pipeline inside the handler.
-- [ ] **T2.5** Wire the run: `resolveConfig({ figmaFrameUrl, pageUrl, outDir: out/runs/<id> })` →
+- [x] **T2.5** Wire the run: `resolveConfig({ figmaFrameUrl, pageUrl, outDir: out/runs/<id> })` →
       `runPipeline(config, { noDeterminism: !determinism })` with an `onEvent` that updates the record.
       Verify `out/runs/<id>/` fills with `figma-ir.json`, `web-ir.json`, `sections.json`,
       `section-alignment.json`, `findings.json`, `report.md`, `report.html` and nothing lands in `out/`
       root.
-- [ ] **T2.6** `src/server/prose.js` — split `ctx.prose.markdown` on `^## ` into a map keyed by
+- [x] **T2.6** `src/server/prose.js` — split `ctx.prose.markdown` on `^## ` into a map keyed by
       heading. The five headings are fixed by the system prompt (`llm.js:38-60`): *Executive
       Assessment*, *What To Fix First*, *Key Issues*, *Section Notes*, *Conclusion*. A missing heading
       yields `undefined` for that key, never an error.
-- [ ] **T2.7** On `run:done`, build `result` from the returned ctx: `ctx.analysis` →
+- [x] **T2.7** On `run:done`, build `result` from the returned ctx: `ctx.analysis` →
       `{ exec, sectionScores, issues, fixOrder }`; `ctx.assembled.counts`; `ctx.alignment.stats`;
       `ctx.prose` → `{ ok, sections, reason, audit, usage }`. Persist to `run.json`.
-- [ ] **T2.8** `GET /api/runs/:id` — the record. `404` on unknown id. On a cold start, fall back to
+- [x] **T2.8** `GET /api/runs/:id` — the record. `404` on unknown id. On a cold start, fall back to
       reading `out/runs/<id>/run.json` from disk.
-- [ ] **T2.9** `GET /api/runs/:id/events` — SSE. **Replay every event already emitted for that run
+- [x] **T2.9** `GET /api/runs/:id/events` — SSE. **Replay every event already emitted for that run
       before streaming live ones**, so a client that connects late or reconnects still sees the full
       stage list. Send a keepalive comment every 15 s. Close the stream on `run:done` / `stage:fail`.
-- [ ] **T2.10** `GET /api/runs/:id/report.md|report.html|findings.json` — serve from the run's out dir
+- [x] **T2.10** `GET /api/runs/:id/report.md|report.html|findings.json` — serve from the run's out dir
       with the right content type and `Content-Disposition: attachment`. Whitelist the three filenames;
       never interpolate `:file` into a path. `404` when the artifact doesn't exist (a run that failed
       before S5 has no `report.md` but does have `findings.json`).
-- [ ] **T2.11** `GET /api/health` — `{ ok, figmaToken: boolean, llm: 'gemini'|'anthropic'|null }`.
+- [x] **T2.11** `GET /api/health` — `{ ok, figmaToken: boolean, llm: 'gemini'|'anthropic'|null }`.
       Presence booleans only; no key values, no prefixes, no lengths.
-- [ ] **T2.12** Serve `ui/dist` statically with an SPA fallback, guarded so it doesn't shadow `/api/*`.
+- [x] **T2.12** Serve `ui/dist` statically with an SPA fallback, guarded so it doesn't shadow `/api/*`.
       Harmless before `ui/` exists.
-- [ ] **T2.13** Verify by `curl` alone: POST an audit, follow `/events` with `curl -N`, GET the record,
+- [x] **T2.13** Verify by `curl` alone: POST an audit, follow `/events` with `curl -N`, GET the record,
       download all three files. Compare that run's `findings.json` against the Phase 0 baseline for the
       same inputs — must be identical.
-- [ ] **T2.14** Verify the 409: POST twice in quick succession. Commit.
+- [x] **T2.14** Verify the 409: POST twice in quick succession. Commit.
+
+> **Gate — met.** A full audit is drivable by `curl` alone: `POST /api/audit` → `202 {runId}`,
+> `curl -N …/events` streams all 28 events to `run:done`, `GET …/runs/:id` returns the complete record,
+> and all three artifacts download. Score 65 Fair, confidence 83%, prose 38/38 numbers traced, clean.
+> Engine files still show zero diff; `npm test` 35/35; `validation.json` still byte-identical.
+
+### Two bugs found by the curl-only gate — both would have surfaced in front of the audience
+
+- **The server crashed on a completed run.** The SSE keepalive timer and the event listener both
+  outlive `res.end()`; a write after end throws asynchronously, which is an uncaught exception, which
+  kills the process. Symptom was every later request returning an empty body. Fixed with a `closed`
+  guard and a single `cleanup()` that clears the timer, unsubscribes, and ends once. Verified against
+  three paths: replay of a finished run, a client disconnecting mid-stream, and reconnect-to-completion.
+- **`meta.viewportWidth` was always `null`.** It was captured at `run:start`, but the width does not
+  exist until M2 derives it from the frame — which is the whole reason M2 precedes M1. Now captured
+  from M2's `stage:ok` info (1920, with the frame name alongside it).
+
+This is why the phase gate was "drivable by curl alone" rather than "the code is written".
 
 ---
 

@@ -10,11 +10,14 @@
     "extract:web": "node src/cli.js --web-only",
     "extract:figma": "node src/cli.js --figma-only",
     "test": "node --test test/*.test.js",
-    "validate": "node fixtures/run.js"
+    "validate": "node fixtures/run.js",
+    "server": "node src/server/index.js",
+    "start": "node src/server/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "playwright": "^1.57.0"
   }
 }
