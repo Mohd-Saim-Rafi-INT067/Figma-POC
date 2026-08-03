@@ -515,6 +515,40 @@ The layering is chosen so the port is a move, not a rewrite:
   real piece of work, and the reason `resolveConfig` never accepts credentials over HTTP (§3.1): that
   boundary is where OAuth will eventually plug in.
 
+### 13.1 OAuth does not solve the rate limit — read this before scoping the integration
+
+Per Figma's rate-limit documentation, scoping differs by auth type:
+
+| Auth type | Tracked |
+|---|---|
+| Personal access token | per **user**, per plan — all requests under one user's token share one pool |
+| OAuth app | per **user**, per plan, **per app** — each user gets their own budget per application |
+| Plan access token | per token, per plan |
+
+So OAuth **spreads** the quota across customers rather than removing it. It fixes the POC's actual
+problem — one PAT on one account, exhausted by development — but an individual heavy user still hits
+the ceiling. Three consequences for the Evertest port:
+
+1. **Both endpoints this pipeline uses are Tier 1**, Figma's most restricted tier: `GET /v1/files/:key`
+   and `GET /v1/files/:key/nodes`. Documented Tier 1 budgets are 10/min (Starter), 15/min
+   (Professional), 20/min (Organization) on Dev/Full seats — and **up to 6 per *month*** on View/Collab
+   seats. A customer running audits from a View seat gets roughly six runs a month regardless of auth
+   method. **Confirm target customers' Figma plans and seat types before scoping.**
+
+2. **Halve the Tier 1 calls per run.** Each audit currently spends two: the version check
+   (`getFileMeta` → `resolveVersion`, `client.js:181-230`) and the node fetch. The version check is
+   pure overhead — the `/nodes` response already carries `version`, `name` and `lastModified`.
+   Removing it eliminates the exact call that 429s today and halves quota consumption per audit. This
+   is a scaling property of the feature, not a demo convenience.
+
+3. **Verify the per-endpoint behaviour with Figma.** The docs place both endpoints in Tier 1, yet on
+   2026-08-03 `/files/:key` returned 429 while `/files/:key/nodes` returned 200 in the same second
+   (§8.1). That implies per-endpoint counters within a tier, which the documentation does not state.
+   The observation is solid; the mechanism is an inference. Do not design a retry strategy on it
+   without confirmation.
+
+Source: `https://developers.figma.com/docs/rest-api/rate-limits/` (retrieved 2026-08-03).
+
 ---
 
 ## 14. Open decisions
