@@ -13,6 +13,30 @@ const swatch = (v) => {
   return m ? `<span class="sw" style="background:#${m[1]}"></span>` : '';
 };
 
+/**
+ * The design side of a finding row.
+ *
+ * An extra-in-web finding has no `expected` by definition - the point of the
+ * finding is that the design has no counterpart. Rendering an empty cell there
+ * reads as missing data, so fall back to the closest colour the engine did find
+ * (compare.js nearestColorInDesign), and failing that say why it is empty.
+ */
+function designSide(f) {
+  if (f.expected !== null && f.expected !== undefined && f.expected !== '') {
+    return `${swatch(f.expected)}${esc(f.expected)}`;
+  }
+  if (f.nearestColorInDesign) {
+    return (
+      `${swatch(f.nearestColorInDesign)}${esc(f.nearestColorInDesign)}` +
+      ` <span class="dim small">nearest</span>`
+    );
+  }
+  if (String(f.property).startsWith('border.radius')) return '<span class="dim small">no radii in design</span>';
+  if (f.property === 'section') return '<span class="dim small">no matching design section</span>';
+  if (String(f.property).startsWith('section.palette')) return '<span class="dim small">no comparable colour</span>';
+  return '<span class="dim small">not in design</span>';
+}
+
 const SEV = ['critical', 'high', 'medium', 'low'];
 
 function findingRow(f) {
@@ -25,6 +49,7 @@ function findingRow(f) {
     f.occurrenceCount ? `×${f.occurrenceCount}` : null,
     f.ratio ? `ratio ${f.ratio}` : null,
     f.delta !== undefined && f.delta !== null ? `Δ ${f.delta}` : null,
+    f.nearestInDesign !== undefined && f.nearestInDesign !== null ? `ΔE ${f.nearestInDesign}` : null,
     ...(f.severityReasons ?? []),
     f.lowConfidence ? 'dynamic content' : null,
   ].filter(Boolean);
@@ -33,7 +58,7 @@ function findingRow(f) {
     <td><span class="badge ${f.severity}">${f.severity}</span></td>
     <td class="mono dim">${esc(where)}</td>
     <td class="mono">${esc(f.property)}</td>
-    <td class="mono">${swatch(f.expected)}${esc(f.expected)}</td>
+    <td class="mono">${designSide(f)}</td>
     <td class="mono">${swatch(f.actual)}${esc(f.actual)}</td>
     <td class="dim small">${esc(notes.join(' · '))}</td>
   </tr>`;
@@ -85,7 +110,7 @@ function fixOrderRows(order) {
 function issueCard(issue) {
   const k = issue.knowledge;
   const ex = issue.findings.slice(0, 3).map((f) =>
-    `<li class="mono small">${swatch(f.expected)}${esc(f.expected)} <span class="dim">→</span> ${swatch(f.actual)}${esc(f.actual)}` +
+    `<li class="mono small">${designSide(f)} <span class="dim">→</span> ${swatch(f.actual)}${esc(f.actual)}` +
     (f.ratio ? ` <span class="dim">×${f.ratio}</span>` : '') + '</li>'
   ).join('');
 

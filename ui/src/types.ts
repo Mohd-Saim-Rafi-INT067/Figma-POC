@@ -91,6 +91,10 @@ export interface Issue {
     delta: number | null;
     ratio: number | null;
     occurrenceCount: number | null;
+    /** Closest colour in the matched design section, when `expected` is null. */
+    nearestColorInDesign: string | null;
+    /** Perceptual distance (deltaE OK) to that colour. Tolerance is 2. */
+    nearestInDesign: number | null;
   }[];
 }
 

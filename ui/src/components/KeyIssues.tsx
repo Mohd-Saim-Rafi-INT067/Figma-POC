@@ -15,6 +15,21 @@ function Swatch({ value }: { value: unknown }) {
   );
 }
 
+/**
+ * Why the design side is empty, for the findings where it legitimately is.
+ *
+ * A bare dash reads as missing data. These are extra-in-web findings: the page
+ * has something the matched design section has no counterpart for at all, which
+ * is the finding itself rather than a gap in it. Saying so is the difference
+ * between "we could not measure this" and "there is nothing there to measure".
+ */
+function blankReason(property: string): string {
+  if (property.startsWith('border.radius')) return 'no radii in the design section';
+  if (property === 'section') return 'no matching design section';
+  if (property.startsWith('section.palette')) return 'no comparable colour in the design section';
+  return 'not present in the design';
+}
+
 const Value = ({ v }: { v: unknown }) =>
   v === null || v === undefined || v === '' ? (
     <span className="text-slate-400">—</span>
@@ -63,10 +78,27 @@ function IssueCard({ issue }: { issue: Issue }) {
               <tbody className="divide-y divide-slate-100">
                 {issue.examples.map((ex, i) => (
                   <tr key={i}>
-                    <td className="px-3 py-2"><Value v={ex.expected} /></td>
+                    <td className="px-3 py-2">
+                      {ex.expected !== null && ex.expected !== undefined && ex.expected !== '' ? (
+                        <Value v={ex.expected} />
+                      ) : ex.nearestColorInDesign ? (
+                        <>
+                          <Value v={ex.nearestColorInDesign} />
+                          <span className="block text-[11px] text-slate-400">nearest in design</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400">{blankReason(issue.property)}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2"><Value v={ex.actual} /></td>
                     <td className="px-3 py-2 tabular-nums text-slate-500">
-                      {ex.delta !== null ? `Δ ${ex.delta}` : ex.ratio !== null ? `ratio ${ex.ratio}` : '—'}
+                      {ex.delta !== null
+                        ? `Δ ${ex.delta}`
+                        : ex.ratio !== null
+                          ? `ratio ${ex.ratio}`
+                          : ex.nearestInDesign !== null
+                            ? `ΔE ${ex.nearestInDesign}`
+                            : '—'}
                       {ex.occurrenceCount ? <span className="text-slate-400"> · ×{ex.occurrenceCount}</span> : null}
                     </td>
                   </tr>

@@ -155,13 +155,19 @@ function comparePair(pair, tol) {
     if (c.count < 2) continue; // a single use is as likely a one-off as a decision
     const { color, deltaE } = nearestColor(c, figmaColors);
     if (!color || deltaE > sec.backgroundColor.tolerance) {
-      extras.push({ color: c, deltaE: color ? +deltaE.toFixed(2) : null });
+      extras.push({ color: c, deltaE: color ? +deltaE.toFixed(2) : null, nearest: color });
     }
   }
   for (const e of extras.slice(0, 6)) {
     findings.push(makeFinding(pair, 'color', 'extra-in-web', 'section.palette', {
       actual: formatColor(e.color),
+      // `expected` stays null deliberately. report/findings.js groupKey() includes
+      // it, so putting the per-section nearest colour here would split one
+      // off-palette colour seen in 13 sections into 13 separate issues - exactly
+      // the fragmentation the grouping exists to prevent. The nearest colour is
+      // reported alongside instead, where it informs without regrouping.
       expected: null,
+      nearestColorInDesign: e.nearest ? formatColor(e.nearest) : null,
       nearestInDesign: e.deltaE,
       occurrenceCount: e.color.count,
       severity: sec.paletteExtra.severity,

@@ -195,6 +195,13 @@ function buildResult(ctx) {
           delta: f.delta ?? null,
           ratio: f.ratio ?? null,
           occurrenceCount: f.occurrenceCount ?? null,
+          // An extra-in-web colour has no `expected` by definition, but the
+          // engine did find its closest design counterpart. Without these two
+          // the UI can only render a dash, and a near-miss (deltaE 3.3, almost
+          // certainly a hand-typed hex) looks identical to a genuinely foreign
+          // colour (deltaE 6.4, usually a third-party component).
+          nearestColorInDesign: f.nearestColorInDesign ?? null,
+          nearestInDesign: f.nearestInDesign ?? null,
         })),
       })) ?? [],
     fixOrder: analysis?.fixOrder ?? [],
