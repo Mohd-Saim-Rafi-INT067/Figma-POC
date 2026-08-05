@@ -16,6 +16,22 @@ function Swatch({ value }: { value: unknown }) {
 }
 
 /**
+ * Plain-language band for a deltaE.
+ *
+ * Mirrors DELTA_E_BANDS in src/report/knowledge.js - if the two disagree, that
+ * file is right. Calibrated against real pairs, not assumed from the CIE scale:
+ * deltaEOK is OKLab euclidean x100, where black-vs-white is exactly 100.
+ */
+function deltaEBand(n: number): string {
+  if (n < 1) return 'invisible';
+  if (n < 2) return 'barely visible';
+  if (n < 5) return 'noticeable';
+  if (n < 10) return 'clearly different';
+  if (n < 25) return 'obviously different';
+  return 'unrelated';
+}
+
+/**
  * Why the design side is empty, for the findings where it legitimately is.
  *
  * A bare dash reads as missing data. These are extra-in-web findings: the page
@@ -92,13 +108,25 @@ function IssueCard({ issue }: { issue: Issue }) {
                     </td>
                     <td className="px-3 py-2"><Value v={ex.actual} /></td>
                     <td className="px-3 py-2 tabular-nums text-slate-500">
-                      {ex.delta !== null
-                        ? `Δ ${ex.delta}`
-                        : ex.ratio !== null
-                          ? `ratio ${ex.ratio}`
-                          : ex.nearestInDesign !== null
-                            ? `ΔE ${ex.nearestInDesign}`
-                            : '—'}
+                      {(() => {
+                        // `delta` is pixels on geometry/typography findings and a
+                        // deltaE only on colour ones - band the latter, never the former.
+                        const dE =
+                          issue.category === 'color'
+                            ? (ex.nearestInDesign ?? ex.delta)
+                            : null;
+                        if (dE !== null && dE !== undefined) {
+                          return (
+                            <>
+                              ΔE {dE}
+                              <span className="ml-1 text-slate-400">· {deltaEBand(Number(dE))}</span>
+                            </>
+                          );
+                        }
+                        if (ex.delta !== null) return `Δ ${ex.delta}`;
+                        if (ex.ratio !== null) return `ratio ${ex.ratio}`;
+                        return '—';
+                      })()}
                       {ex.occurrenceCount ? <span className="text-slate-400"> · ×{ex.occurrenceCount}</span> : null}
                     </td>
                   </tr>

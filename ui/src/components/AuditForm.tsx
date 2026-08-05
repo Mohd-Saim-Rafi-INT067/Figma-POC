@@ -63,7 +63,10 @@ export function AuditForm({ onSubmit, disabled, health, serverError }: Props) {
   const [values, setValues] = useState<FormValues>({
     figmaFrameUrl: '',
     pageUrl: '',
-    determinism: false,
+    // Default ON: a run that never identified its dynamic regions reports
+    // motion as defects. Costs 15-50s; the alternative is untrustworthy
+    // findings. Uncheckable in Advanced for a quick look.
+    determinism: true,
   });
   const [touched, setTouched] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -163,8 +166,9 @@ export function AuditForm({ onSubmit, disabled, health, serverError }: Props) {
               <span className="text-sm">
                 <span className="font-medium text-slate-800">Run the determinism self-check</span>
                 <span className="block text-slate-500">
-                  Extracts the page a second time and proves the two runs agree. Adds roughly 15–50
-                  seconds.
+                  Extracts the page a second time to identify animated and dynamic regions, so
+                  motion is not reported as a defect. Adds roughly 15–50 seconds. Turning this off
+                  makes findings faster but less trustworthy.
                 </span>
               </span>
             </label>

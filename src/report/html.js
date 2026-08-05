@@ -2,6 +2,22 @@
  * Self-contained HTML report. No external requests, light + dark.
  */
 
+import { formatDeltaE } from './knowledge.js';
+
+/**
+ * The deltaE carried by a finding, or null.
+ *
+ * `delta` is NOT always a deltaE - on geometry and typography findings it is
+ * pixels, and labelling "Δ 4" as a colour distance would be a lie. Only colour
+ * findings carry one, in `delta` (backgroundColor mismatch) or in
+ * `nearestInDesign` (off-palette colour, where there is no expected value).
+ */
+function colorDeltaE(f) {
+  if (f.category !== 'color') return null;
+  const v = f.nearestInDesign ?? f.delta;
+  return v === undefined || v === null ? null : v;
+}
+
 const esc = (s) =>
   String(s ?? '—')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -37,6 +53,25 @@ function designSide(f) {
   return '<span class="dim small">not in design</span>';
 }
 
+/**
+ * Where the finding is, as two things you can act on rather than one you cannot.
+ *
+ * "§4→5" tells a reader which section pair without telling them how to reach it.
+ * The Figma link opens the exact frame section; the selector pastes into
+ * devtools. Both come from report/index.js attachLocators - section-scoped,
+ * because V1 findings are section aggregates.
+ */
+function locatorCell(f, where) {
+  const loc = f.locators ?? {};
+  const label = loc.figmaUrl
+    ? `<a href="${esc(loc.figmaUrl)}" target="_blank" rel="noopener">${esc(where)}</a>`
+    : esc(where);
+  const selector = loc.webSelector
+    ? `<div class="dim small sel" title="${esc(loc.webSelector)}">${esc(loc.webSelector)}</div>`
+    : '';
+  return `${label}${selector}`;
+}
+
 const SEV = ['critical', 'high', 'medium', 'low'];
 
 function findingRow(f) {
@@ -45,18 +80,20 @@ function findingRow(f) {
         ? `§${f.sections[0].figmaIndex + 1}→${f.sections[0].webIndex + 1}`
         : `${f.sections.length} sections`)
     : 'page';
+  const dE = colorDeltaE(f);
   const notes = [
     f.occurrenceCount ? `×${f.occurrenceCount}` : null,
     f.ratio ? `ratio ${f.ratio}` : null,
-    f.delta !== undefined && f.delta !== null ? `Δ ${f.delta}` : null,
-    f.nearestInDesign !== undefined && f.nearestInDesign !== null ? `ΔE ${f.nearestInDesign}` : null,
+    dE !== null
+      ? formatDeltaE(dE)
+      : f.delta !== undefined && f.delta !== null ? `Δ ${f.delta}` : null,
     ...(f.severityReasons ?? []),
     f.lowConfidence ? 'dynamic content' : null,
   ].filter(Boolean);
 
   return `<tr class="sev-${f.severity}">
     <td><span class="badge ${f.severity}">${f.severity}</span></td>
-    <td class="mono dim">${esc(where)}</td>
+    <td class="mono dim">${locatorCell(f, where)}</td>
     <td class="mono">${esc(f.property)}</td>
     <td class="mono">${designSide(f)}</td>
     <td class="mono">${swatch(f.actual)}${esc(f.actual)}</td>
@@ -192,6 +229,10 @@ export function renderHtml({ assembled, alignment, sections, config, prose, anal
   .dim { color:var(--dim); }
   .small { font-size:.82rem; }
   .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85rem; }
+  /* Selectors are long and must never widen the table - truncate, full value in the title. */
+  .sel { max-width:16ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:.75; }
+  td a { color:inherit; text-decoration:underline; text-underline-offset:2px; text-decoration-style:dotted; }
+  td a:hover { text-decoration-style:solid; }
   .meta { color:var(--dim); font-size:.88rem; margin:0 0 1.25rem; }
   .meta a { color:inherit; }
 

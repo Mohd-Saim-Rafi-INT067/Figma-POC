@@ -11,9 +11,60 @@ import { generateProseReport } from './llm.js';
 import { auditProse } from './audit.js';
 import { analyse } from './analysis.js';
 
+/**
+ * Attach a Figma deep link and a CSS selector to every finding that names a
+ * section.
+ *
+ * The single most common question a finding raises is "where is this?", and
+ * both answers already exist: sections carry their own node id on each side
+ * (`2743:6477` in Figma, an IR id on the web), and every web node carries a
+ * `webSelector` that pastes straight into devtools. Nothing new is measured
+ * here - it is a join that was never made.
+ *
+ * Section-level, not element-level. V1 findings are aggregates over a section,
+ * so a section is the most precise honest target. Element-level links arrive
+ * with V2's correspondence.
+ */
+function attachLocators(findings, { sections, snapshots, config }) {
+  if (!sections) return findings;
+
+  const figmaById = new Map((sections.figma?.sections ?? []).map((s) => [s.index, s]));
+  const webById = new Map((sections.web?.sections ?? []).map((s) => [s.index, s]));
+  const selectorByNodeId = new Map(
+    (snapshots?.web?.nodes ?? []).map((n) => [n.id, n.sourceRef?.webSelector ?? null])
+  );
+
+  const figmaFileKey = config?.figmaFileKey;
+
+  return findings.map((f) => {
+    const first = f.sections?.[0];
+    if (!first) return f;
+
+    const figmaSection = figmaById.get(first.figmaIndex);
+    const webSection = webById.get(first.webIndex);
+    const figmaNodeId = figmaSection?.id ?? null;
+    const webSelector = webSection ? selectorByNodeId.get(webSection.id) ?? null : null;
+
+    return {
+      ...f,
+      locators: {
+        figmaNodeId,
+        // node-id uses "-" in URLs where the REST API uses ":" (config.js).
+        figmaUrl:
+          figmaFileKey && figmaNodeId
+            ? `https://www.figma.com/design/${figmaFileKey}?node-id=${figmaNodeId.replace(':', '-')}`
+            : null,
+        webSelector,
+        scope: 'section',
+      },
+    };
+  });
+}
+
 /** S4 - assemble findings. */
 export async function stageAssemble(ctx) {
   const assembled = assembleFindings(ctx.findings, ctx.config.tolerance);
+  assembled.findings = attachLocators(assembled.findings, ctx);
   ctx.assembled = assembled;
 
   writeFileSync(

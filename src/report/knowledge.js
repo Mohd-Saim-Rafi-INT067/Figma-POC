@@ -273,6 +273,59 @@ export const KNOWLEDGE = {
       }),
 };
 
+/**
+ * Plain-language band for a deltaE value.
+ *
+ * "ΔE 7.43" is meaningless to everyone except the person who chose the metric.
+ * The number stays - it is the measurement - but it travels with a phrase that
+ * says what it means for a human looking at the screen.
+ *
+ * CALIBRATED, not assumed. deltaEOK is OKLab euclidean distance x100, which is
+ * NOT the classic CIE scale at the top end: here black-vs-white is exactly 100
+ * by construction and red-vs-green is 52, where CIE76 would put the latter far
+ * higher. Measured against real pairs (src/ir/color.js deltaEOK):
+ *
+ *     0.15  #835CF5 vs #835CF6   one bit apart          invisible
+ *     0.30  #FFFFFF vs #FEFEFE   1/255 off-white        invisible
+ *     1.49  #FFFFFF vs #FAFAFA   subtle off-white       large areas only
+ *     2.07  #835CF5 vs #8A63FA   close purple           at tolerance
+ *     2.89  #FF0000 vs #FF3300   red vs orange-red      noticeable
+ *     3.31  #F2E8FA vs #E6DEFD   two pale lavenders     noticeable
+ *     4.79  #6A6670 vs #757575   two mid greys          noticeable
+ *     7.43  #D4CAFF vs #D6D6D6   lavender vs grey       clearly different
+ *    51.98  #FF0000 vs #00FF00   red vs green           unrelated
+ *   100.00  #000000 vs #FFFFFF   black vs white         unrelated
+ *
+ * The section colour tolerance is 2.0, which lands exactly on the boundary
+ * between "only on large areas" and "noticeable at a glance" - i.e. the engine
+ * starts reporting precisely where a person starts seeing. That agreement is
+ * the useful thing to tell a reader.
+ */
+const DELTA_E_BANDS = [
+  { max: 1, label: 'invisible', detail: 'No one can see this difference.' },
+  { max: 2, label: 'barely visible', detail: 'Visible only on large areas, side by side. At tolerance.' },
+  { max: 5, label: 'noticeable', detail: 'Noticeable at a glance.' },
+  { max: 10, label: 'clearly different', detail: 'Reads as a different colour.' },
+  { max: 25, label: 'obviously different', detail: 'Obviously the wrong colour.' },
+  { max: Infinity, label: 'unrelated', detail: 'Not a variation - a different colour entirely.' },
+];
+
+/**
+ * @param {number|string|null|undefined} value
+ * @returns {{label: string, detail: string}|null} null when there is no deltaE
+ */
+export function deltaEBand(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return DELTA_E_BANDS.find((b) => n < b.max) ?? DELTA_E_BANDS[DELTA_E_BANDS.length - 1];
+}
+
+/** `4.79` -> `"ΔE 4.79 · noticeable"`. Returns null when there is nothing to describe. */
+export function formatDeltaE(value) {
+  const band = deltaEBand(value);
+  return band ? `ΔE ${value} · ${band.label}` : null;
+}
+
 /** Resolve the interpretation for a finding. Always returns an entry. */
 export function interpret(finding) {
   const entry = KNOWLEDGE[finding.property];

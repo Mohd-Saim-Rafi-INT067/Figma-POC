@@ -83,8 +83,11 @@ export function validateAuditRequest(body = {}) {
       figmaFrameUrl: String(figmaFrameUrl).trim(),
       pageUrl: String(pageUrl).trim(),
       // The determinism self-check re-extracts the whole page and roughly
-      // doubles web-side runtime, so it is opt-in for the demo.
-      determinism: body.determinism === true,
+      // doubles web-side runtime. It was opt-in while this was a demo; it is
+      // now default-ON, because a run whose dynamic regions were never
+      // identified cannot gate anything - it reports motion as defects. The
+      // CLI has always defaulted it on; this aligns the server with it.
+      determinism: body.determinism !== false,
       // Default ON. Without it a 429 on the version-check endpoint silently
       // serves a stale cached design, and the audit compares against a design
       // that is not the one on screen. See plan §8.1.
