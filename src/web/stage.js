@@ -118,6 +118,9 @@ export async function stageDeterminismCheck(ctx) {
   // second run by design) and masks the real divergence behind them.
   const byId = new Map(strippedSecond.nodes.map((n) => [n.id, n]));
   const diffs = [];
+  // Every id that diverged, not just the 40 sampled below. This is the set fed
+  // back into the snapshot, so it must be complete.
+  const divergedIds = new Set();
   let unstableDiffs = 0;
   let stableDiffs = 0;
 
@@ -126,6 +129,7 @@ export async function stageDeterminismCheck(ctx) {
     const isUnstable = unstableIds.has(n1.id);
 
     if (!n2) {
+      divergedIds.add(n1.id);
       diffs.push({ id: n1.id, path: n1.sourceRef.webPath, issue: 'missing in second run', unstable: isUnstable });
       isUnstable ? unstableDiffs++ : stableDiffs++;
       continue;
@@ -134,6 +138,7 @@ export async function stageDeterminismCheck(ctx) {
       const s1 = JSON.stringify(n1[key]);
       const s2 = JSON.stringify(n2[key]);
       if (s1 !== s2) {
+        divergedIds.add(n1.id);
         isUnstable ? unstableDiffs++ : stableDiffs++;
         // Cap only the recorded samples; keep counting all of them.
         if (diffs.length < 40) {
@@ -147,8 +152,34 @@ export async function stageDeterminismCheck(ctx) {
     }
   }
 
+  // Feed the result back into the snapshot the pipeline will actually compare.
+  //
+  // Until now this stage only REPORTED: it computed exactly which nodes moved
+  // between two extractions, wrote them to a file, and then compared them
+  // anyway. That is why the same page produced 92, 94 and 97 findings on
+  // consecutive runs - the node population itself varied (1224 vs 1273 nodes
+  // measured), so the findings and the score moved with it.
+  //
+  // The double extraction IS the definition of the static subset: a node that
+  // differs between two runs of the same page is dynamic, whatever caused it.
+  // Empirical, no heuristics, no per-site tuning. Marking those nodes unstable
+  // means segment.js drops their style values from the section digests, so
+  // motion stops being reported as a defect.
+  //
+  // `unstable` is the extractor's own flag for the same idea, so this widens an
+  // existing concept rather than inventing a parallel one.
+  let newlyMarked = 0;
+  for (const n of first.nodes) {
+    if (!divergedIds.has(n.id)) continue;
+    if (n._web?.unstable) continue;
+    n._web = { ...(n._web ?? {}), unstable: true, unstableReason: 'diverged between extractions' };
+    newlyMarked++;
+  }
+
   ctx.diagnostics.determinism = {
     identical: false,
+    divergedNodes: divergedIds.size,
+    newlyMarkedUnstable: newlyMarked,
     // The claim that actually matters: everything the extractor did NOT flag as
     // unstable reproduced exactly.
     identicalOutsideUnstable: stableDiffs === 0,
@@ -170,6 +201,7 @@ export async function stageDeterminismCheck(ctx) {
     stableDiffs,
     unstableDiffs,
     flaggedUnstable: unstableIds.size,
+    excluded: divergedIds.size,
     out: 'out/determinism-diff.json',
   };
 }

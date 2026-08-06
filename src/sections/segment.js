@@ -96,6 +96,24 @@ function buildDigest(sectionNode, nodes, side) {
     if (n.text && !isNumericLike(n.text)) textAnchors.add(n.text);
     if (n.text) textNodes++;
 
+    if (n._web?.unstable) unstable++;
+
+    // A node that was still moving at capture time cannot contribute a style
+    // VALUE. Whatever colour, size or radius it happened to hold at the instant
+    // of the snapshot is an artifact of timing, and comparing it against the
+    // design reports motion as a defect.
+    //
+    // Excluded from the value sets, deliberately NOT from `textAnchors`,
+    // `textNodes` or `nodeCount`: those feed S2 section matching, and the
+    // typewriter hero on the reference page is both unstable and one of the
+    // strongest anchors available. Dropping it would degrade matching to fix
+    // a comparison problem.
+    //
+    // Section geometry is still affected - a section containing a carousel is
+    // genuinely taller - so geometry findings keep the `lowConfidence` tag
+    // applied in compare.js. This removes the value findings, not the tag.
+    if (n._web?.unstable) continue;
+
     for (const p of n.fill.paints || []) addColor(p);
     addColor(n.fill.backgroundColor);
     if (n.border.width.some((w) => w > 0)) addColor(n.border.color);
@@ -133,8 +151,6 @@ function buildDigest(sectionNode, nodes, side) {
     for (const g of n.layout.gapsMeasured || []) {
       if (g > 0) spacing[g] = (spacing[g] || 0) + 1;
     }
-
-    if (n._web?.unstable) unstable++;
   }
 
   // Dominant surface colour, by PAINTED AREA.

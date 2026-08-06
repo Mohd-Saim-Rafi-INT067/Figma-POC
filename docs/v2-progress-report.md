@@ -12,7 +12,7 @@ Branch: **`v2`** (`origin/v2`) · Baseline: `a8014af` on `main`
 
 | Phase | Status |
 |---|---|
-| **0 — Ship-now improvements** | 🟡 **In progress** — ΔE bands and deep links done and verified; determinism default done; 2 items open |
+| **0 — Ship-now improvements** | 🟢 **Complete** — 6 of 7 items done; score instability investigated and **deliberately deferred to Phase 8** with a diagnosis (see below) |
 | **1 — E1 comparable element set** ⛔ GATE | ⬜ Not started |
 | **2 — E2 correspondence** ⛔ GATE | ⬜ Not started |
 | **3 — E3 structural verdict** | ⬜ Not started |
@@ -73,22 +73,65 @@ aggregates. Element-level locators arrive with Phase 2 correspondence.
 `ui/components/AuditForm.tsx` — checkbox defaults on, copy rewritten to say what turning it off
 costs. The CLI already defaulted it on; the server now agrees.
 
-### ⬜ Exclude unstable nodes from findings
+### ✅ Exclude unstable nodes from findings
 
-Still **flagged** (`lowConfidence`) rather than excluded. Deliberately deferred within Phase 0:
-it changes finding counts, so it needs its own before/after verification rather than riding
-along with cosmetic changes.
+Two changes, because the first alone was inert.
 
-### ⬜ Section-match confidence → severity
+**`segment.js`** — an unstable node no longer contributes style *values* to a section digest.
+Whatever colour or size it held at the instant of capture is an artifact of timing. Deliberately
+**not** excluded from `textAnchors` / `textNodes` / `nodeCount`: those feed S2 matching, and the
+typewriter hero on the reference page is both unstable and one of the strongest anchors available.
+Geometry findings keep their `lowConfidence` tag — a section containing a carousel really is taller.
 
-Not started. Section confidence ranges **0.669 – 0.938** on the reference run and findings from
-both extremes are presented identically today.
+**`web/stage.js`** — the determinism check now **feeds back** instead of only reporting. It already
+computed exactly which nodes diverged between two extractions, wrote them to a file, and then
+compared them anyway. Those ids are now marked unstable on the snapshot the pipeline compares.
 
-### ⬜ Score instability (NFR N7)
+The double extraction *is* the definition of the static subset — empirical, no heuristics, no
+per-site tuning.
 
-Not started. The same page scored **64** and **65** minutes apart. Suspected cause is dynamic
-content; the determinism default above may itself change the picture, so re-measure before
-investigating further.
+Measured impact: **247 nodes excluded** on a run that detected divergence, of which **214–237 were
+not caught by the extractor's own flag.** The extractor's heuristic was missing the large majority
+of real motion.
+
+### ✅ Section-match confidence → severity
+
+`findings.js` demotes a finding one severity step when its section pair matched below
+`MATCH_CONFIDENCE_FLOOR = 0.75`, with the reason shown. The floor sits between the reference page's
+two weak pairs (0.669, 0.680) and the next value up (0.785) — a threshold on observed data, not a
+tidy round number. Moves to the tolerance profile when V2 makes confidence a first-class input.
+
+Verified: **12 findings** demoted, reasons composing correctly
+(`24 occurrences · section match only 0.72 confident`). Not suppressed — a weak match is still
+evidence, just weaker.
+
+### 🔴 Score instability (NFR N7) — investigated, NOT fixed
+
+Diagnosed properly and it is worse than "the score wobbles". **The extraction itself is not
+reproducible across runs.**
+
+| Measurement | Value |
+|---|---|
+| Web node count, consecutive runs of the same page | **1224** vs **1273** |
+| Findings across six runs | 87, 89, 92, 94, 96, 97 |
+| Divergence detected by the determinism check | **0** on one run, **247** on the next |
+| Page structure | stable — 19 sections, total height 23,991 both times |
+
+So the structure is reproducible and the *node population* is not. The determinism check compares
+two extractions **inside one browser session, seconds apart**; it cannot see variance between runs
+minutes apart, and its own result varies (0 vs 247 diverged).
+
+The exclusion work above genuinely reduces noise, but **it cannot fix this** and should not be
+reported as having done so. Real options, none of them Phase 0:
+
+1. **Baselines (Phase 8)** — compare run against run, which is the only thing that measures
+   cross-run variance honestly.
+2. **N-extraction intersection** — extract three times, keep only nodes present and identical in
+   all three. Expensive; roughly triples web runtime.
+3. **Report a stability band, not a point score** — "64 ± 2" is honest where "64" is not.
+
+Recommend deciding this alongside Phase 8 rather than patching it now. Until then **the score
+should not be presented as precise**, and nothing should gate on it.
 
 ---
 
@@ -138,3 +181,13 @@ one is available — every number below comes from one file.
 - Phase 0: ΔE bands calibrated and shipped to HTML + UI
 - Phase 0: section-scoped deep links (Figma + CSS selector) on 95/97 findings
 - Phase 0: determinism self-check now default-on in server and UI
+
+**2026-08-06**
+- Phase 0: unstable nodes excluded from section digests (`segment.js`)
+- Phase 0: determinism check made load-bearing — diverged ids fed back into the compared
+  snapshot (`web/stage.js`). 247 nodes excluded on a diverging run; 214–237 of them were
+  invisible to the extractor's own flag
+- Phase 0: section-match confidence demotes severity below 0.75 (`findings.js`) — 12 findings
+- Phase 0: **score instability diagnosed, not fixed.** Extraction is not reproducible across
+  runs (1224 vs 1273 nodes); deferred to Phase 8 baselines with three options written up
+- **Phase 0 closed.** Next: Phase 1 — E1 comparable element set and the node-ratio gate

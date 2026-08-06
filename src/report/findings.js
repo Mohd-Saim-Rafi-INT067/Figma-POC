@@ -10,6 +10,16 @@
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low'];
 const SEVERITY_RANK = Object.fromEntries(SEVERITY_ORDER.map((s, i) => [s, i]));
 
+/**
+ * Below this S2 match confidence, findings are demoted one severity step.
+ *
+ * 0.75 sits between the reference page's two weak pairs (0.669, 0.680) and the
+ * rest of the distribution, whose next value up is 0.785. It is a threshold on
+ * observed data, not a round number chosen for looking tidy - and it belongs in
+ * the tolerance profile once V2 makes confidence a first-class input.
+ */
+const MATCH_CONFIDENCE_FLOOR = 0.75;
+
 /** FNV-1a. Not cryptographic - it only needs to be stable and cheap. */
 function hash(str) {
   let h = 0x811c9dc5;
@@ -115,6 +125,28 @@ export function assembleFindings(rawFindings, tolerance) {
       if (rank < SEVERITY_ORDER.length - 1) {
         severity = SEVERITY_ORDER[rank + 1];
         reasons.push('section contains dynamic content');
+      }
+    }
+
+    // Nor can a finding derived from a weak section match.
+    //
+    // S2 reports a confidence per pair - 0.669 to 0.938 on the reference page -
+    // and every finding inherits it through `sectionPair.confidence`. Until now
+    // that number was carried and ignored: a finding from a 0.67 match was
+    // presented exactly as loudly as one from a 0.94 match, even though the
+    // first may be comparing two sections that are not counterparts at all.
+    //
+    // Below the floor the comparison is not trustworthy enough to shout about,
+    // so severity drops one step and the reason says why. It is deliberately
+    // NOT suppressed - a weak match is still evidence, just weaker.
+    const matchConfidence = f.sections?.length
+      ? Math.max(...f.sections.map((s) => s.confidence ?? 1))
+      : 1;
+    if (matchConfidence < MATCH_CONFIDENCE_FLOOR) {
+      const rank = SEVERITY_RANK[severity];
+      if (rank < SEVERITY_ORDER.length - 1) {
+        severity = SEVERITY_ORDER[rank + 1];
+        reasons.push(`section match only ${matchConfidence.toFixed(2)} confident`);
       }
     }
 
