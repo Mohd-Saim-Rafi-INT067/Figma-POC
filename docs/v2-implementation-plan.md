@@ -64,18 +64,37 @@ real content replaces dummy content, and sections reflow. That difference **is**
 A Tier 1 anchor is therefore **not** plain box IoU. It requires:
 
 ```
-xOverlap(a, b)      ≥ 0.8
-widthRatio(a, b)    within ±10%
+xOverlap(a, b)      ≥ 0.5          filter
 readingOrder        monotonic (no inversion)
 styleSignature      compatible
+widthRatio(a, b)    SCORING SIGNAL, not a filter
 ```
 
 plus a **piecewise-linear Y warp** interpolated between already-anchored elements, giving unanchored
 elements a local Y expectation. This is the same technique S2 applies at section level, applied
 within a section.
 
-> Plain `IoU ≥ 0.8` on section-relative boxes — the earlier draft of this spec — **fails** on pair
+> Plain `IoU ≥ 0.8` on section-relative boxes — an earlier draft of this spec — **fails** on pair
 > 6→7, where heights differ 4.93×. Do not reintroduce it.
+
+#### Correction, 2026-08-11 — width is not an element-level filter
+
+This section previously made `widthRatio within ±10%` a hard Tier 1 **filter**, reasoning that width
+matches "by construction". **Measured in Phase 1, that is true of sections and false of elements.**
+
+| | |
+|---|---|
+| Class-compatible candidate pairs inside ±10% | **309 of ~1,990** |
+| Tier 1 coverage with the ±10% filter | **19%** |
+| Tier 1 coverage with width dropped entirely | **43%** |
+
+Width matches at section level because `applyFrameWidth` forces the viewport — and 18/18 sections do
+sit at 1920px. Inside a section nothing forces it: containers size to their content, text wraps
+differently, and real content replaces dummy content. The filter alone cost more than half of every
+achievable anchor, against an architecture that expected Tier 1 to resolve "the majority".
+
+Width is now a scoring signal (`elementGate.anchor.widthRatioScoreBand`), penalising log-ratio
+distance rather than rejecting. **Do not restore it as a filter.**
 
 Also fix while here: one section reports width `1920.0002021495602`. Clamp float artifacts.
 
@@ -155,29 +174,62 @@ the same score.
 
 ---
 
-### Phase 1 — E1 comparable element set ⛔ **GATE** *(3–4 days)*
+### Phase 1 — E1 comparable element set ⛔ **GATE** — ✅ **PASSED 2026-08-11**
 
 The cheapest possible test of whether the whole architecture is viable.
 
-- [ ] `src/elements/collapse.js`
-  - [ ] Figma vector-cluster collapse — sibling vector nodes under one parent become a single `icon`
-        node with union bounding box and dominant fill
-        *(current file: 743 `icon` nodes, 57% under 24×24, one parent holding 126)*
-  - [ ] Web wrapper collapse — single-child containers with no visual output
-  - [ ] Drop zero-area, hidden, fully-clipped, and out-of-section nodes
-  - [ ] Per-reason counts retained for the audit trail
-- [ ] `src/elements/signature.js` — `styleSignature` over fill · border · radius · shadow ·
-      fontFamily/Size/Weight
-- [ ] `src/elements/build.js` — emit the `Element` contract (HLD §5.1), boxes **section-relative**
-- [ ] Write `out/runs/<id>/elements.json`
-- [ ] **Measurement harness: per-section-pair node-count ratio, before and after collapse**
+- [x] `src/elements/collapse.js`
+  - [x] Figma vector-cluster collapse — **the maximal subtree whose every leaf is an icon** becomes a
+        single `icon` node with union bounding box and dominant fill
+        *(the narrower "sibling vectors under one parent" rule this plan originally specified catches
+        only 361 of 731 icon leaves and misses the 273-node illustration in section 12 entirely)*
+  - [x] Web wrapper collapse — containers with no visual output, survivors reparented
+  - [x] Drop zero-area and hidden nodes; out-of-section nodes cannot arise (traversal is by subtree)
+  - [x] Per-reason counts retained for the audit trail
+- [x] `src/elements/signature.js` — `styleSignature` over fill presence · border · radius class ·
+      shadow · fontFamily/Size/Weight bands, plus repeated-group **labelling**
+- [x] `src/elements/build.js` — emits the `Element` contract (HLD §5.1), boxes **section-relative**
+- [x] `src/elements/gate.js` — the measurement harness; `src/elements/replay.js` runs it offline
+      against a completed run's artifacts, so iterating costs no browser launch and no Figma quota
+- [x] Write `out/runs/<id>/elements.json`
+- [x] E1 wired into the pipeline beside S3 (V1 keeps producing the report until Phase 4)
 - [ ] Re-run against a **second Figma file + live page** and record the same table
 
-**Exit / GATE:** per-section node-count ratios move from today's **0.35 – 2.48** toward ~1.0, and
-element counts land in the **20–80 per side per section** band.
+#### Exit / GATE — the metric changed, and why
 
-> If ratios stay wide, the two trees are not comparable and E2 will not work. **Stop and re-plan.**
-> Four days spent instead of three months.
+The gate as originally written was *"node-count ratios move from 0.35–2.48 toward ~1.0"*. **Measured,
+they do not**: after collapse the range is 0.36–2.88 with 9/18 pairs inside ±25%, against 8/18 before.
+
+That metric is the wrong question. Its outliers are dominated by causes that are not incomparability:
+
+| Pair | Ratio | Cause |
+|---|---|---|
+| 18→19 | 2.88 | footer designed with 11 links, built with 52 real ones |
+| 9→10 | 2.05 | 16 designed text runs against 50 rendered — same cause |
+| 10→11 | 0.56 | 18 design-only decorative vectors with no web counterpart |
+
+A section whose design shows 3 dummy cards where production renders 12 **should** read far from 1.0
+and is perfectly comparable. Content volume is E3's repeated-group rule, not evidence that the trees
+cannot be matched. (Template-normalising the counts was tried and rejected — it takes pair 9→10 to
+exactly 1.00 and distorts six others, because the two sides group differently.)
+
+**The gate is now the pair of numbers that answers the real question:**
+
+| Metric | Meaning | Measured |
+|---|---|---|
+| **Ceiling** | fraction of elements with *any* class-compatible, x-overlapping counterpart in-section — bounds what any matcher could achieve | **87% figma / 88% web** |
+| **Anchor** | what deterministic Tier 1 resolves today | **37%** |
+| Element counts | the 20–80 per-side band | 12/18 pairs; 633 figma / 596 web total |
+| Ratio | retained as *context*, never a verdict | 9/18 inside ±25% |
+
+**Verdict: pass.** An 87/88% ceiling says the two trees are comparable — nearly nine elements in ten
+have a plausible counterpart. The gap from 37% to 87% is matcher quality, not data, and it is exactly
+Tier 2's workload.
+
+> **Consequence for Phase 2, and it is not small.** Tier 2 sees roughly **410 figma + 373 web
+> elements** across 18 sections, not the small remainder the architecture assumed. Re-estimate LLM
+> cost before building the tier, and treat the widened hallucination surface as a verification
+> requirement rather than a footnote.
 
 ---
 

@@ -1,3 +1,5 @@
+import type { QaData } from './components/QaReport';
+
 /**
  * Mirrors the run record the server returns.
  *
@@ -135,6 +137,8 @@ export interface RunResult {
   alignmentStats: Record<string, number> | null;
   determinism: Record<string, unknown> | null;
   prose: Prose;
+  /** E7 visual QA report. Absent on runs that stopped before it. */
+  qa: QaData | null;
   files: { markdown: boolean; html: boolean; findings: boolean };
 }
 

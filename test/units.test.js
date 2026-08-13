@@ -180,6 +180,46 @@ test('prune: drops invisible nodes and reparents their surviving children', () =
   assert.equal(snapshot.nodes.find((n) => n.id === 'kid').parentId, 'r', 'must reparent to nearest survivor');
 });
 
+test('prune: a clipped parent must not delete children that ARE on screen', () => {
+  // REGRESSION. A JS-driven carousel moves while the serializer walks the DOM,
+  // so the track's rect comes from one frame and its slides' from another. On
+  // the reference page the testimonial track reported x=-1916 while its own
+  // visible children sat at x=976..1667. The clip pass dropped the track and
+  // assumed "descendants are inside this box", silently deleting an entire
+  // visible section - two cards, their quotes, avatars, names and roles - and
+  // no finding, warning or count ever mentioned it.
+  const clipWindow = { x: 976, y: 0, w: 691, h: 453 };
+  const node = (id, parentId, box, over = {}) =>
+    makeNode({
+      id, parentId, boxAbsolute: box, boxRelative: box,
+      children: over.children ?? [],
+      fill: { backgroundColor: over.bg ?? null, paints: over.bg ? [over.bg] : [] },
+      text: over.text ?? null,
+      _web: { tag: 'div', display: 'block', visibility: 'visible', overflowX: over.overflow ?? 'visible', overflowY: over.overflow ?? 'visible' },
+    });
+
+  const snap = makeSnapshot({
+    side: 'web', rootId: 'r', sourceVersion: null,
+    nodes: [
+      node('r', null, { x: 0, y: 0, w: 1920, h: 900 }, { bg: makeColor(255, 255, 255), children: ['window'] }),
+      node('window', 'r', clipWindow, { overflow: 'hidden', children: ['track'] }),
+      // Rect captured mid-animation: nowhere near its own children.
+      node('track', 'window', { x: -1916, y: 0, w: 1414, h: 453 }, { children: ['onscreen', 'offscreen'] }),
+      node('onscreen', 'track', { x: 1000, y: 40, w: 643, h: 180 }, { bg: makeColor(1, 2, 3), text: 'visible quote' }),
+      node('offscreen', 'track', { x: 1723, y: 40, w: 643, h: 180 }, { bg: makeColor(4, 5, 6), text: 'next slide' }),
+    ],
+  });
+
+  const { snapshot, stats } = pruneSnapshot(snap);
+  const ids = snapshot.nodes.map((n) => n.id);
+
+  assert.ok(ids.includes('onscreen'), 'a child inside the clip window must survive its mis-measured parent');
+  assert.ok(!ids.includes('offscreen'), 'a child genuinely outside the clip window must still be dropped');
+  assert.ok(!ids.includes('track'), 'the mis-measured parent itself is still clipped out');
+  assert.equal(snapshot.nodes.find((n) => n.id === 'onscreen').parentId, 'window', 'survivor reparents to nearest kept ancestor');
+  assert.ok(stats.reasons['clipped-out-parent'] >= 1, 'the partial drop is counted under its own reason');
+});
+
 test('prune: collapses transparent wrappers to fixpoint', () => {
   const box = { x: 0, y: 0, w: 100, h: 100 };
   const snap = makeSnapshot({

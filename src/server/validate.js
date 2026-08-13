@@ -92,6 +92,10 @@ export function validateAuditRequest(body = {}) {
       // serves a stale cached design, and the audit compares against a design
       // that is not the one on screen. See plan §8.1.
       noCache: body.noCache !== false,
+      // E6 evidence needs the stabilized page photographed. Default ON here,
+      // unlike the CLI: a UI run exists to be looked at, and side-by-side
+      // screenshots are the point of the report.
+      capture: body.capture !== false,
       viewportWidth:
         body.viewportWidth === undefined || body.viewportWidth === null || body.viewportWidth === ''
           ? undefined

@@ -250,6 +250,55 @@ export class FigmaClient {
   }
 
   /**
+   * Render ONE node to PNG and return its URL.
+   *
+   * `/v1/images` is **Tier 1** - confirmed from Figma's published rate-limit
+   * documentation, which a View/Collab seat meters at roughly SIX REQUESTS PER
+   * MONTH. That single number dictates everything here:
+   *
+   *   - render the whole frame once and crop sections locally. Rendering 18
+   *     sections individually would spend three months of budget in one run.
+   *   - cache indefinitely, keyed by (fileKey, nodeId, version). Renders are
+   *     immutable per version, so a cache hit costs nothing and is never stale.
+   *   - `scale` is a parameter rather than a constant because a 1920x19,752
+   *     export may exceed Figma's size limit, and discovering that must not
+   *     cost a second request - the caller decides the fallback from the one
+   *     response we get.
+   *
+   * Returns the image URL, not the bytes: Figma serves renders from S3, and
+   * that fetch is not itself a Tier-1 request.
+   */
+  async getImage(fileKey, version, nodeId, { scale = 1, format = 'png' } = {}) {
+    const cacheName = `image-${safeId(nodeId)}-${format}@${scale}`;
+
+    const cached = this._readCache(fileKey, version, cacheName);
+    if (cached) return { ...cached, cacheHit: true };
+
+    // Pin the render to the SAME file version the node JSON came from.
+    // /v1/images renders current state by default, and the file has moved on
+    // since our IR was captured - an unpinned render would be a picture of a
+    // different design than the one every measurement and every ground-truth
+    // sheet describes.
+    const q = new URLSearchParams({ ids: nodeId, format, scale: String(scale) });
+    if (version) q.set('version', String(version));
+    const data = await this._request(`/images/${fileKey}?${q}`);
+
+    // Figma reports per-node failures in the body with HTTP 200.
+    const url = data?.images?.[nodeId];
+    if (!url) {
+      throw new FigmaError(
+        `Figma rendered no image for ${nodeId}` +
+          (data?.err ? `: ${data.err}` : ' (no URL in response; the frame may exceed the export size limit)'),
+        200
+      );
+    }
+
+    const entry = { url, nodeId, scale, format, renderedAt: new Date().toISOString() };
+    this._writeCache(fileKey, version, cacheName, entry);
+    return { ...entry, cacheHit: false };
+  }
+
+  /**
    * Token authority tier 1. Enterprise-plan-gated, so 403 is a NORMAL outcome
    * and must not be treated as an error (parent doc 14.2, plan 2.3).
    */

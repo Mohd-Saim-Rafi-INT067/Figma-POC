@@ -64,3 +64,71 @@ html {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------- E7 QA ---
+ * The visual QA report. Deliberately plain, dense and scannable: this is a
+ * developer's bug list, not marketing.
+ */
+.qa { --qa-line:#e2e8f0; --qa-muted:#64748b; }
+.qa-head { display:flex; gap:16px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; }
+.qa h2 { font-size:18px; font-weight:650; color:#0f172a; margin:0; }
+.qa-sub { color:var(--qa-muted); font-size:14px; margin:4px 0 0; max-width:70ch; }
+.qa-h3 { font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--qa-muted);
+  margin:26px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--qa-line); }
+.qa-btn { background:#4338ca; color:#fff; border:0; border-radius:8px; padding:9px 16px;
+  font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.qa-btn:hover:not(:disabled) { background:#3730a3; }
+.qa-btn:disabled { opacity:.6; cursor:default; }
+.qa-error { color:#b91c1c; font-size:13px; margin:8px 0 0; }
+.qa-note { color:var(--qa-muted); font-size:13px; }
+
+.qa-stats { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0 4px; }
+.qa-stat { background:#fff; border:1px solid var(--qa-line); border-radius:8px; padding:9px 14px; min-width:104px; }
+.qa-stat b { display:block; font-size:19px; color:#0f172a; }
+.qa-stat span { color:var(--qa-muted); font-size:12px; }
+
+.qa-issue { background:#fff; border:1px solid var(--qa-line); border-left-width:4px;
+  border-radius:8px; padding:13px 15px; margin:0 0 10px; }
+.qa-critical { border-left-color:#dc2626; }
+.qa-high { border-left-color:#ea580c; }
+.qa-medium { border-left-color:#ca8a04; }
+.qa-low { border-left-color:#94a3b8; }
+.qa-issue header { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:7px; }
+.qa-issue h4 { font-size:14.5px; font-weight:650; color:#0f172a; margin:0; }
+.qa-sev { font-size:11px; font-weight:800; letter-spacing:.04em; }
+.qa-badge { font-size:11px; background:#eef2ff; color:#3730a3; border-radius:99px; padding:2px 9px; font-weight:650; }
+.qa-badge.qa-shared { background:#ecfdf5; color:#065f46; }
+.qa-badge.qa-structural { background:#fef3c7; color:#92400e; }
+.qa-conf { font-size:11px; color:var(--qa-muted); margin-left:auto; }
+.qa-scope { font-size:11px; color:var(--qa-muted); }
+
+.qa-values { border-collapse:collapse; margin:5px 0 9px; font-size:13px; }
+.qa-values td { padding:2px 12px 2px 0; vertical-align:top; }
+.qa-prop { color:var(--qa-muted); min-width:132px; }
+.qa-design, .qa-web { font-variant-numeric:tabular-nums; font-weight:600; color:#0f172a; }
+.qa-arrow { color:var(--qa-muted); }
+.qa-delta { color:#ea580c; font-weight:650; font-variant-numeric:tabular-nums; }
+.qa-pct { color:var(--qa-muted); font-weight:400; }
+
+.qa-issue figure { margin:9px 0; }
+.qa-issue figure img { max-width:100%; border:1px solid var(--qa-line); border-radius:6px; display:block; }
+.qa-issue figcaption { font-size:11px; color:var(--qa-muted); margin-top:4px; }
+.qa-impact { margin:5px 0 3px; color:#334155; font-size:13.5px; }
+.qa-fix { margin:0 0 5px; font-size:13.5px; color:#0f172a; }
+.qa-links { display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:12px; margin-top:5px; }
+.qa-links a { color:#4338ca; text-decoration:none; font-weight:600; }
+.qa-links code { background:#f1f5f9; border:1px solid var(--qa-line); border-radius:4px;
+  padding:2px 6px; font-size:11px; overflow-wrap:anywhere; }
+
+.qa-section { border:1px solid var(--qa-line); border-radius:8px; background:#fff; margin:0 0 8px; overflow:hidden; }
+.qa-section-head { display:flex; align-items:baseline; gap:10px; width:100%; text-align:left;
+  background:none; border:0; padding:11px 14px; cursor:pointer; font:inherit; }
+.qa-section-head:hover { background:#f8fafc; }
+.qa-caret { color:var(--qa-muted); font-size:12px; }
+.qa-section-name { font-weight:650; color:#0f172a; font-size:14px; }
+.qa-section-meta { color:var(--qa-muted); font-size:12px; margin-left:auto; }
+.qa-section-body { padding:4px 14px 14px; border-top:1px solid var(--qa-line); background:#f8fafc; }
+
+.qa-limits { background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+  padding:12px 14px; margin-top:20px; font-size:13px; color:#78350f; }
+.qa-limits b { display:block; margin-bottom:4px; }

@@ -204,7 +204,14 @@ tier: 'anchor' | 'llm' | 'unresolved'
 ```
 
 The LLM response schema contains **no numeric field other than `confidence`** — structurally
-incapable of carrying a measurement.
+incapable of carrying a measurement *as data*.
+
+> **Verified against Gemini, 2026-08-11.** Field-level enforcement is real: an adversarial prompt
+> demanding extra measurement fields produced none. Two gaps the schema does not close, both handled
+> in `verify.js` rather than by trusting the provider:
+>
+> 1. `descriptor` is free text and absorbs measurements under pressure — truncate and screen it.
+> 2. `maxLength` is advisory only (60 requested, 99 returned) — enforce lengths client-side.
 
 ### 5.3 E3 — Structural verdict
 

@@ -181,12 +181,21 @@ export function serializePage(opts) {
       text: directText(el),
       styles: styles,
       // Document space, plus any iframe offset so all coordinates share an origin.
-      rect: {
+      //
+      // A settled rect, if one was recorded, wins. Scroll-driven sections play
+      // an animation as the user scrolls through a tall container, and measuring
+      // them at scrollTop captures the animation's FIRST frame - on the
+      // reference page twelve cards that spread into a 3x4 grid were all
+      // recorded stacked at one coordinate. The pinned pass re-measures those
+      // subtrees after the animation completes and leaves the result here,
+      // already in document space. See extract.js step 13.
+      rect: el.__paritySettled ? { ...el.__paritySettled } : {
         x: round(r.left + scrollX + frameOffset.x),
         y: round(r.top + scrollY + frameOffset.y),
         w: round(r.width),
         h: round(r.height),
       },
+      settled: !!el.__paritySettled,
       context: context,
       children: [],
       isPseudo: false,

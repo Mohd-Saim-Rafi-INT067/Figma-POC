@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { extractWeb } from './extract.js';
 import { normalizeWeb } from './normalize.js';
+import { captureFullPage, capturePinnedSections, evidencePaths } from '../evidence/capture.js';
 
 /** M1 - extract. */
 export async function stageWebExtract(ctx) {
@@ -22,10 +23,31 @@ export async function stageWebExtract(ctx) {
     config.viewportWidth = config.viewportWidthOverride;
   }
 
+  // Capture is opt-in: a full-page PNG of a 24,000px document costs seconds and
+  // megabytes, and only the V2 evidence path wants it.
+  let capture = null;
+  const wantCapture = ctx.flags.capture ?? false;
+
   ctx.webRaw = await extractWeb(config, {
     verbose: ctx.flags.verbose,
     log: console,
+    // The hook fires last, after every measurement is taken, so a screenshot
+    // pass cannot perturb what was measured. See extract.js step 14.
+    onStabilized: wantCapture
+      ? async (page, raw) => {
+          const paths = evidencePaths(config.outDir);
+          capture = await captureFullPage(page, paths.fullPage);
+          // Pinned sections are measured at their settled scroll, so they must
+          // be photographed there too or pixels and geometry disagree.
+          capture.pinned = await capturePinnedSections(page, raw.pinned, paths.pinned);
+          if (capture.pinned.length) {
+            writeFileSync(paths.pinnedManifest, JSON.stringify(capture.pinned, null, 2));
+          }
+        }
+      : undefined,
   });
+
+  ctx.capture = capture;
 
   ctx.stageInfo = {
     nodes: ctx.webRaw.nodes.length,
@@ -33,6 +55,7 @@ export async function stageWebExtract(ctx) {
     fontSignatures: ctx.webRaw.renderedFonts.signatures.length,
     probes: ctx.webRaw.renderedFonts.probes,
     xOriginIframes: ctx.webRaw.stats.skippedCrossOriginIframes || null,
+    ...(capture ? { capture: `${capture.width}x${capture.height}` } : {}),
   };
 }
 

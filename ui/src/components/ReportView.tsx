@@ -8,6 +8,7 @@ import { Prose, ProseUnavailable } from './Prose';
 import { ProseAuditBadge } from './ProseAuditBadge';
 import { DownloadBar } from './DownloadBar';
 import { RawFindings } from './RawFindings';
+import { QaReport } from './QaReport';
 
 /**
  * The report.
@@ -65,6 +66,23 @@ export function ReportView({ record }: { record: RunRecord }) {
 
   return (
     <div className="space-y-8">
+      {/* --- E7 visual QA. THE report. --------------------------------- */}
+      {result.qa && <QaReport data={result.qa} runId={record.id} />}
+
+      {/*
+        Everything below is V1's SECTION-LEVEL engine - the same page measured
+        as aggregates rather than elements ("this section's palette contains a
+        colour the design doesn't have, 35 times"). E7 supersedes it, and
+        showing both reads as two contradictory reports of one page.
+        Collapsed: still reachable for the aggregate scores and the raw
+        findings table, never the first thing a reader meets.
+      */}
+      <details className="rounded-xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer select-none px-5 py-3 text-sm font-medium text-slate-600 hover:text-slate-900">
+          Aggregate view (V1 engine) — section-level scores and raw findings
+        </summary>
+        <div className="space-y-8 border-t border-slate-100 p-5">
+
       {/* --- header ------------------------------------------------------ */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold tracking-tight text-slate-900">Design parity report</h2>
@@ -221,6 +239,8 @@ export function ReportView({ record }: { record: RunRecord }) {
           </Card>
         </Section>
       )}
+        </div>
+      </details>
     </div>
   );
 }

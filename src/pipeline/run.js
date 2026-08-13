@@ -16,6 +16,11 @@ import { stageFigmaExtract, stageFigmaNormalize } from '../figma/stage.js';
 import { stageWebExtract, stageWebNormalize, stageDeterminismCheck } from '../web/stage.js';
 import { stagePrune, stageSpacing } from './stage.js';
 import { stageSegment, stageMatch, stageCompare } from '../sections/stage.js';
+import { stageElements } from '../elements/stage.js';
+import { stageStructural, stageProperties } from '../compare/stage.js';
+import { stageIssues } from '../issues/stage.js';
+import { stageEvidence } from '../evidence/stage.js';
+import { stageQaReport } from '../qa/stage.js';
 import { stageAssemble, stageReport } from '../report/index.js';
 
 export class NotImplemented extends Error {
@@ -52,6 +57,15 @@ export const STAGES = [
   { id: 'P6',  side: 'both',  phase: 'B', label: 'Measured spacing derivation',     run: stageSpacing },
   { id: 'S1',  side: 'both',  phase: 'C', label: 'Section segmentation',            run: stageSegment },
   { id: 'S2',  side: 'both',  phase: 'D', label: 'Section matching (aligned)',      run: stageMatch },
+  // E1 sits beside S3 rather than replacing it: V2 phase 1 measures whether
+  // element-level correspondence is viable while V1's aggregate comparison
+  // still produces the report. S3 goes away in phase 4, not before.
+  { id: 'E1',  side: 'both',  phase: 'E', label: 'Comparable element set (V2 gate)', run: stageElements },
+  { id: 'E3',  side: 'both',  phase: 'E', label: 'Structural verdict (aligned/not-aligned)', run: stageStructural },
+  { id: 'E4',  side: 'both',  phase: 'E', label: 'Element property comparison',      run: stageProperties },
+  { id: 'E5',  side: 'both',  phase: 'E', label: 'Issue prioritisation',              run: stageIssues },
+  { id: 'E6',  side: 'both',  phase: 'E', label: 'Evidence (annotated crops)',        run: stageEvidence },
+  { id: 'E7',  side: 'both',  phase: 'F', label: 'Visual QA report',                 run: stageQaReport },
   { id: 'S3',  side: 'both',  phase: 'E', label: 'Section comparison (aggregates)', run: stageCompare },
   { id: 'S4',  side: 'both',  phase: 'F', label: 'Finding assembly',                run: stageAssemble },
   { id: 'S5',  side: 'both',  phase: 'F', label: 'Report (console + json + LLM)',   run: stageReport },

@@ -20,7 +20,7 @@ const C = {
 function parseArgs(argv) {
   const flags = {
     webOnly: false, figmaOnly: false, noCache: false,
-    noDeterminism: false, verbose: false, help: false,
+    noDeterminism: false, verbose: false, help: false, capture: false,
   };
   for (const arg of argv) {
     switch (arg) {
@@ -28,6 +28,7 @@ function parseArgs(argv) {
       case '--figma-only': flags.figmaOnly = true; break;
       case '--no-cache':   flags.noCache = true; break;
       case '--no-determinism': flags.noDeterminism = true; break;
+      case '--capture':    flags.capture = true; break;
       case '-v':
       case '--verbose':    flags.verbose = true; break;
       case '-h':
@@ -60,6 +61,7 @@ Flags:
                   or the last cached frame width - see plan 3.2)
   --no-cache        bypass the Figma version cache and refetch
   --no-determinism  skip the double-extraction self-check (roughly halves web runtime)
+  --capture         screenshot the stabilized page for V2 evidence (adds seconds and MBs)
   -v, --verbose     log each stabilization step and font-probe failure
   -h, --help        this message
 

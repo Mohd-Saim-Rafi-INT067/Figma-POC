@@ -209,6 +209,22 @@ function buildResult(ctx) {
     alignmentStats: alignment?.stats ?? null,
     determinism: ctx.diagnostics?.determinism ?? null,
     prose: proseOut,
+    // E7. The section-wise visual QA report is what the UI leads with; the
+    // V1 fields above remain for the existing panels.
+    qa: ctx.qa
+      ? {
+          page: ctx.qa.page,
+          sections: ctx.qa.sections.map((s) => ({
+            figmaIndex: s.figmaIndex,
+            webIndex: s.webIndex,
+            label: s.label,
+            headline: s.headline,
+            issueCount: s.issueCount,
+            bySeverity: s.bySeverity,
+            issues: s.issues,
+          })),
+        }
+      : null,
     files: artifactsOnDisk(dir),
   };
 }
@@ -265,7 +281,11 @@ async function executeRun(record) {
     return;
   }
 
-  const flags = { noCache: record.input.noCache, noDeterminism: !record.input.determinism };
+  const flags = {
+    noCache: record.input.noCache,
+    noDeterminism: !record.input.determinism,
+    capture: record.input.capture,
+  };
 
   try {
     let ctx;
@@ -451,6 +471,52 @@ export function createApp() {
     res.setHeader('Content-Type', spec.type);
     res.setHeader('Content-Disposition', `attachment; filename="${id}-${file}"`);
     createReadStream(path).pipe(res);
+  });
+
+  /**
+   * Evidence images for the QA report.
+   *
+   * Issues carry `evidenceRel` ("evidence/issues/issue-00.png"), a path
+   * relative to the run directory. The wildcard is resolved and then checked to
+   * be inside that directory - a path from a client is never trusted to stay
+   * where it claims.
+   */
+  app.get(/^\/api\/runs\/([^/]+)\/evidence\/(.+)$/, (req, res) => {
+    const [id, rel] = [req.params[0], req.params[1]];
+    if (!runs.get(id)) return res.status(404).json({ error: `No run with id ${id}` });
+
+    const base = resolve(runs.runDir(id), 'evidence');
+    const path = resolve(base, rel);
+    if (!path.startsWith(base)) return res.status(400).json({ error: 'Bad path' });
+    if (!existsSync(path)) return res.status(404).json({ error: 'No such evidence image' });
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    createReadStream(path).pipe(res);
+  });
+
+  /**
+   * "Generate Full Page Report".
+   *
+   * Aggregates the section reports this run already produced. It does NOT rerun
+   * E1-E6 - re-deriving would risk a page report that disagrees with the
+   * section reports beside it, and would cost another extraction.
+   */
+  app.post('/api/runs/:id/full-report', async (req, res) => {
+    const { id } = req.params;
+    const run = runs.get(id);
+    if (!run) return res.status(404).json({ error: `No run with id ${id}` });
+
+    try {
+      const { generateFullPageReport } = await import('../qa/stage.js');
+      const result = await generateFullPageReport(runs.runDir(id), {
+        figmaFileKey: run.config?.figmaFileKey ?? null,
+        pageUrl: run.config?.pageUrl ?? null,
+      });
+      res.json({ ok: true, page: result.page });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   // ---- static UI ---------------------------------------------------------

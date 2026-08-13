@@ -56,6 +56,97 @@
     "minWidthFraction": 0.6
   },
 
+  "_elements": "E1 comparable element set (V2 phase 1). Reduces each side to elements a person would point at. MEASURED on the reference run: the Figma frame carries 743 `icon` nodes because vector art is decomposed into paths - one decorative illustration in section 12 is a 273-node icon-only subtree three levels deep. Collapsing on 'parent whose children are all icon leaves' catches only 361 of 731 leaves and misses that illustration entirely; the rule must be MAXIMAL ICON-ONLY SUBTREE. With it, section 12 goes 380 -> 41 elements and its pair ratio 0.37 -> 1.02.",
+  "elements": {
+    "minAreaPx": 0.5,
+    "keepDividers": true,
+    "targetCountMin": 20,
+    "targetCountMax": 80,
+    "repeatedGroup": { "minSiblings": 3, "sizeBucketPx": 8 }
+  },
+
+  "_elementGate": "The Phase 1 go/no-go measurement. NOT the Phase 2 matcher - this is a probe that answers 'are these two trees puttable into correspondence at all', and it must stay measurement-only. `ceiling` is the fraction of elements having ANY class-compatible, x-overlapping counterpart in-section; it bounds what any matcher could achieve. `anchor` is what the deterministic Tier-1 rule actually resolves. Measured on the reference run: ceiling 89% figma / 87% web, anchor 19% under the original spec - a gap that is matcher quality, not data comparability.",
+  "elementGate": {
+    "ceiling":  { "xOverlapFloor": 0.5, "requireClassMatch": true },
+    "anchor":   { "xOverlapFloor": 0.5, "yRelWindow": 0.25, "requireClassMatch": true, "widthRatioScoreBand": 0.25 },
+    "ratioBand": 0.25,
+    "_widthIsNotAFilter": "Width was a hard +/-10% Tier-1 FILTER in the first draft of v2-implementation-plan.md 0.2, on the grounds that width 'matches by construction'. That is true of SECTIONS (18/18 at 1920px) and false of ELEMENTS: containers size to content, text wraps differently, and real content replaces dummy content. Only 309 of ~1990 class-compatible candidates fall inside +/-10%, and the filter alone costs more than half of all achievable anchors (19% -> 43% when dropped). Width is now a SCORING signal via widthRatioScoreBand. Do not restore it as a filter."
+  },
+
+  "_correspond": "E2 Tier 1 anchoring. Two passes: strict seeds define a piecewise-linear y warp, then the remainder is judged against that warp. Width NEVER filters - see elementGate._widthIsNotAFilter. yRel* are fractions of section height used before a warp exists; yResidualWindow is the tolerance on the warped prediction afterwards.",
+  "correspond": {
+    "xOverlapStrict": 0.8,
+    "xOverlapFloor": 0.5,
+    "yRelStrict": 0.10,
+    "yRelWindow": 0.25,
+    "yResidualWindow": 0.15,
+    "widthRatioScoreBand": 0.25,
+    "widthWeight": 0.35,
+    "orderBands": 3,
+
+    "_proximityVeto": "EXPERIMENT, default OFF. A Tier-3 plausibility check (contract 4.2): reject a Tier-2 pair when an unclaimed, same-or-better-class page element sits strictly closer in section-relative y by at least marginY AND is no worse in x alignment. It can only REMOVE a claim - it never substitutes the alternative it found, because geometry choosing the counterpart would make geometry decide identity. Only Tier 1 anchors count as claims, so the result cannot depend on evaluation order. marginY 0.03 sits below the observed error margins (0.050, 0.104, 0.104) and above noise. Derived from three sections; must be validated on further ground truth before it is ever default-on.",
+    "proximityVeto": { "enabled": false, "marginY": 0.03 },
+
+
+    "_classIsFilter": "TRUE, and measured rather than assumed. A hard class filter does reject 6 of 16 true pairs in one section, so relaxing it to a score was tried - and ABLATION SHOWS IT MAKES MATCHING WORSE: recall 27.8% -> 24.1%, precision 0.45 -> 0.28, and f12->w13 falls from 8/16 to 5/16 correct. Dropping the filter adds 13 anchors of which almost none are right: cross-class candidates win the greedy assignment and displace correct same-class pairs, because no ranking signal is strong enough to sort them. The candidate ceiling it buys is only +2 pairs. Set false to re-measure; keep the classCompatibility table either way, since the underlying observation (a design glyph is routinely built as text or a button) is real and Tier 2 will need it.",
+    "classIsFilter": true,
+
+    "_classCompatibility": "How plausible two differing classes are as the same element. Keys are the two classes sorted and joined with '~'; 1.0 is implicit for identical classes. EVERY disagreement observed in ground truth was 'glyph -> something': the design draws an icon as vector art and the page builds it as a text character (an accordion +/- indicator), a button, or an image - the design side cannot express which. These values MULTIPLY confidence, so they can only ever mark a pair DOWN, never up.",
+    "classCompatibility": {
+      "glyph~text": 0.6,
+      "control~glyph": 0.6,
+      "box~glyph": 0.5,
+      "control~text": 0.6,
+      "box~text": 0.35,
+      "box~control": 0.35,
+      "default": 0.35
+    },
+    "classWeight": 0.5,
+
+    "_rearranged": "Applied when a section's layout was RESTRUCTURED between design and build - detected from seed density, i.e. the strict pass's own failure, never from any page-specific signal. On the reference page the footer is designed stacked and built side by side at the same viewport width; 8 of 17 true pairs died on the x filter and 7 more on the y window before ranking ran. When x carries no information it must not eliminate candidates, so the floor drops to 0 and the y windows widen. Confidence is unaffected and stays low for these pairs, which is the point: they become visible to Tier 2 without becoming assertable by Tier 1.",
+    "rearranged": {
+      "enabled": true,
+      "seedDensityFloor": 0.10,
+      "xOverlapFloor": 0,
+      "yResidualWindow": 0.45,
+      "yRelWindow": 0.45
+    },
+
+    "confidenceGate": { "report": 0.85, "lowConfidence": 0.60 },
+    "_orderBands": "Reading order is enforced within this many column bands, not across the section - a 2-D layout flattened to 1-D produces false crossings (two-column blocks serialise differently on the two sides). Measured coverage of the smaller side: greedy-only 66.2%, 1 band (global) 45.2%, 2 bands 51.1%, 3 bands 54.2%, 4 bands 54.4%, 6 bands 56.5%. MORE BANDS ALWAYS SCORES HIGHER BECAUSE THE CONSTRAINT GETS WEAKER, which is exactly why this must not be tuned on coverage. 3 is a defensible default for 1/2/3-column layouts; the Phase 2 hand-scoring gate decides the real value, since only ground truth distinguishes a recovered match from a wrong one."
+  },
+
+  "_structural": "E3 structural verdict. THE SEMANTIC RULE: an element without a counterpart is NOT ALIGNED, not 'missing'. Measured correspondence recall is 33.5% across six hand-scored sections, so a missing/extra vocabulary would assert that two thirds of every design is absent from a page that builds it. Absence becomes a CLAIM only when absence is evidence - currently just an entire design repeated group with no counterpart group, and only in a section where correspondence is otherwise healthy. Raise minCoverageForClaims as recall improves; it is the dial that decides how much the tool is willing to assert.",
+  "structural": {
+    "minCoverageForClaims": 0.6,
+    "minGroupSizeForClaim": 3,
+    "minComponentWitnesses": 3,
+    "minInstancesForSlotClaim": 2,
+    "maxChanceOfSlotClaim": 0.05
+  },
+
+  "_elementCompare": "E4 per-element comparison. backgroundInheritHops: how far up the COLLAPSED ancestors to look for the background a reader actually sees. A page often paints a card background on a wrapper E1 removed while the design paints it on the card, and comparing the nodes directly then reports design-has-fill/page-has-none - measured at 30 of 33 colour findings on verified-correct alignments. The walk stops at any kept element (compared in its own right) and at the section root (or everything inherits the section background).",
+  "elementCompare": { "backgroundInheritHops": 4, "maxExemplars": 3 },
+
+  "_issues": "E5 issue prioritisation. Visual severity is distinct from technical severity and is the right ranking for a human: a 4px error on an 800px hero button matters more than the same error on a footer link. Every input is measured - nothing here is a model opinion. Weights are data, like every other threshold. matchConfidence MULTIPLIES rather than adding, so a claim resting on weak correspondence can only ever be marked down. landingViewCap enforces the NFR that a first-time reader sees fewer than 20 things; it applies to MERGED issues, not raw findings, which is what makes it achievable - a button with four problems costs one slot.",
+  "issues": {
+    "weights": { "severity": 0.40, "issueCount": 0.20, "area": 0.15, "position": 0.15, "instances": 0.10 },
+    "issueCountSaturation": 3,
+    "instanceSaturation": 4,
+    "landingViewCap": 20,
+    "maxExemplars": 3,
+    "oneFixThreshold": 10,
+    "systemicMinOccurrences": 2,
+    "viewportWidth": 1920,
+    "viewportHeight": 900
+  },
+
+  "_evidence": "E6. One image per MERGED issue, never per finding - which is why E5 runs first; per-finding rendering makes four images of the same button and discards three. All coordinates are MEASURED: identifier coverage is 100% on both sides, so a model placing boxes would buy approximation, variance and a failure mode that looks like success.",
+  "evidence": { "scale": 0.5, "pad": 48, "annotateTop": 20 },
+
+  "_qa": "E7 visual QA report. The LLM is a PRESENTATION layer only: it may reword a title, an impact line and a fix line, and nothing else. Its response schema carries no numeric field, any number in its prose must already exist in that issue own measured values, and absence wording is rejected unless E3 produced a structural claim. A field failing any check is discarded and the deterministic text stands - the report is complete and correct with the model never called.",
+  "qa": { "systemicMinOccurrences": 3, "fixFirstLimit": 10, "synthesise": true, "synthesiseTop": 40 },
+
   "_warnBand": "Parent doc 6.6: each property has a warn band at 2x tolerance producing non-gating 'drift' findings.",
   "warnBandMultiplier": 2,
 

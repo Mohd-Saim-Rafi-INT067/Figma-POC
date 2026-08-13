@@ -1,0 +1,32 @@
+{
+  "_": "Hand-established ground truth, figma section 6 -> web section 7 ('Hire for AI-native execution'). RE-SCORED by the user 2026-08-12 against the SETTLED geometry produced by the pinned-section fix (extract.js step 13). Supersedes the original scoring, which was done when all twelve cards were recorded stacked at one coordinate and could only be matched by DOM order.",
+
+  "_whyRescored": "The pinned fix re-measures scroll-driven sections after their animation completes and re-expresses them against the sticky viewport. For this section that took the 24 card/image elements from 2 distinct positions to 24, and the section height from 3,150px (scroll distance) to 900px (visual), dropping the design/page height ratio from 4.93x to 1.41x. Element COUNTS were unchanged at 34/36, but reading order changed completely, so every web index in the previous file pointed at a different element. Counts are not sufficient to validate index stability - element identity must be checked.",
+
+  "run": "20260812 post-pinned-fix run (34 figma / 36 web)",
+  "figmaIndex": 6,
+  "webIndex": 7,
+  "sectionConfidence": 0.723,
+  "counts": { "figma": 34, "web": 36 },
+
+  "_truth": "Keyed by the figma element's orderIndex. A number is the matching web orderIndex; 'missing' = designed but not built; 'decor' = design-only decoration; '?' = undecidable, excluded from scoring.",
+  "truth": {
+    "0": "decor",
+    "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 9, "8": 10,
+    "9": 13, "10": 14, "11": 8, "12": "?", "13": 11, "14": 15, "15": 16,
+    "16": 17, "17": 18, "18": 19, "19": 21, "20": 20, "21": 22, "22": 23,
+    "23": 24, "24": 26, "25": 25, "26": "?", "27": "decor", "28": 27,
+    "29": 28, "30": "decor", "31": 29, "32": 30, "33": "missing"
+  },
+
+  "_pattern": "Cards pair with cards and their inner images with images, template index by template index: figma 1/2 -> web 2/3 (tpl 0.0), 3/4 -> 4/5 (0.1), and so on through 0.11. The design carries a THIRTEENTH card (tpl 0.12, figma 33) that the page does not build - the one genuine 'missing'.",
+
+  "_excluded": "figma 12 is the purple bullet beside the eyebrow label: visible in the design, but the page has no standalone element for it. figma 26 is the button's text, which the page exposes only as the parent link (figma 24 -> web 26). Both are '?' rather than 'missing' - the ink is on screen, it simply has no separable counterpart.",
+
+  "_webExtra": "Structural/layout wrappers rather than designed elements.",
+  "webExtra": [0, 1, 31, 32, 33, 34, 35],
+  "_webUnclaimed": "Web 12 is neither claimed nor marked extra on the sheet; unclaimed either way, so it does not affect precision.",
+
+  "_note": "28 real matches, 2 excluded as '?', 3 'decor', 1 'missing'. No conflicts.",
+  "conflicts": []
+}

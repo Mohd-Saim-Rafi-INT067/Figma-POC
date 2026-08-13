@@ -57,12 +57,14 @@ function persist(record) {
   }
 }
 
-export function create({ figmaFrameUrl, pageUrl, determinism = false, noCache = true }) {
+export function create({ figmaFrameUrl, pageUrl, determinism = false, noCache = true, capture = true }) {
   const id = makeId();
   const record = {
     id,
     status: 'queued',
-    input: { figmaFrameUrl, pageUrl, determinism, noCache },
+    //  drives E6: without it the run produces no evidence images and
+    // the QA report has nothing to show beside its numbers.
+    input: { figmaFrameUrl, pageUrl, determinism, noCache, capture },
     meta: {
       pageUrl,
       figmaFileKey: null,

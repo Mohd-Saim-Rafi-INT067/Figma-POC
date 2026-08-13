@@ -69,8 +69,20 @@ which code does badly. It never answers *"is this colour correct?"* or produces 
 - The failure mode is invisible. A wrong measurement looks exactly like a right one.
 
 This is not a restriction on capability — correspondence is the part that genuinely needs a model,
-and it is the part V2 gives it. The response schema carries **no field capable of holding a
-measurement**, so a model ignoring instructions still cannot inject one.
+and it is the part V2 gives it. The response schema carries **no numeric field capable of holding a
+measurement**, so a model ignoring instructions cannot inject one *as data*.
+
+> **Measured, 2026-08-11 — the schema is necessary and not sufficient.** Gemini enforces the schema
+> at field level: an adversarial prompt ordering it to add `measuredBackgroundHex`, `paddingPx` and
+> `deltaE` produced none of them, across every run. But `descriptor` is a free-text field, and the
+> model packed the geometry into it instead — `"figma(x=100, y=40, w=200, h=24) ... #835CF5"` — every
+> single time. `maxLength` is **not** enforced (60 requested, 85 and 99 returned), and with an
+> unbounded descriptor the model ran to the token ceiling and produced invalid JSON.
+>
+> `descriptor` is therefore treated as untrusted cosmetic text: truncated client-side and **dropped
+> outright if it matches a measurement pattern**, keeping the pairing. See E2 verification (§6.3).
+> Under a normal prompt the model behaves — `"section heading text"`, 126 output tokens — so this is
+> a guard against drift, not a description of everyday behaviour.
 
 If you want the model to make style *judgements* too, that is a separate decision and I would take it
 after seeing V2 run, not before.
@@ -142,10 +154,15 @@ Reduce each side to **elements a person would actually point at**:
 **Target: 20–80 elements per side per section.** That is tractable for correspondence, cheap for the
 LLM, and — not coincidentally — the granularity a report can present without drowning the reader.
 
-> **Gate.** After E1, node-count ratios per section pair must approach 1.0. On the reference file
-> today they range **0.35 – 2.48** (pair 12→13 is 380 vs 142). If collapse does not fix that, the two
-> trees are not comparable and E2 will fail. **This is the go/no-go measurement for the whole design,
-> and it costs 2–3 days to find out.**
+> **Gate — revised 2026-08-11 after measuring it.** The original gate was *"node-count ratios per
+> section pair must approach 1.0"*. They do not, and the metric was wrong: its outliers are dominated
+> by real content-volume differences (a footer designed with 11 links and built with 52) which are
+> E3's repeated-group problem, not evidence the trees cannot be matched.
+>
+> The gate is now **ceiling** — the fraction of elements having any class-compatible, x-overlapping
+> counterpart in-section, which bounds what any matcher could achieve — measured against **anchor**,
+> what deterministic Tier 1 resolves. **Measured: ceiling 87% figma / 88% web, anchor 37%. Passed.**
+> See `v2-implementation-plan.md` Phase 1 for the full table.
 
 ---
 
@@ -155,9 +172,13 @@ Three tiers, cheapest first.
 
 ### 6.1 Tier 1 — Deterministic anchors (no cost)
 
-Pair elements that are unambiguous: exactly one candidate on each side with `IoU ≥ 0.8` on the
-section-relative box **and** a compatible style signature **and** consistent reading order. Expect
-this to resolve the majority of elements on a well-built page. Anything ambiguous falls through.
+Pair elements that are unambiguous: x-overlap above the floor on the section-relative box **and** a
+compatible style signature **and** consistent reading order, with width ratio *scoring* the candidate
+rather than filtering it (`v2-implementation-plan.md` §0.2). Anything ambiguous falls through.
+
+> **Measured, 2026-08-11: this resolves 37%, not "the majority".** Plan the tier budget on a third,
+> not on a remainder. Note also that box IoU and a hard ±10% width filter were both tried and both
+> fail — section heights differ up to 4.93× and element widths are content-sized.
 
 ### 6.2 Tier 2 — LLM adjudication (vision)
 
@@ -186,9 +207,13 @@ Every proposed pairing is checked against measured IR before it is allowed to ex
 
 - both ids resolve to real elements in this section
 - neither is already assigned
-- `IoU` above the floor, or an explicit size-change finding is produced
+- x-overlap above the floor, or an explicit size-change finding is produced
 - reading order not inverted beyond threshold
 - style signatures not wildly incompatible (a text run cannot match an image)
+- **`descriptor` truncated client-side and dropped if it matches a measurement pattern** — digits with
+  units, hex colours, or coordinate syntax. Measured: the model leaks geometry into this field under
+  pressure and `maxLength` is not enforced server-side. Dropping the descriptor keeps the pairing;
+  the descriptor is a label in the report, never an input to a finding.
 
 Rejected proposals are logged, never reported. **The model proposes; the engine disposes.**
 

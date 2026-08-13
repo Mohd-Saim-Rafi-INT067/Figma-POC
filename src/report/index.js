@@ -108,7 +108,16 @@ export async function stageReport(ctx) {
   const analysis = analyse(assembled, alignment, sections);
   ctx.analysis = analysis;
 
-  const prose = await generateProseReport(assembled, alignment, sections, analysis);
+  // V1's narrative is skipped once E7 has produced the visual QA report.
+  //
+  // Not for tidiness: it is a second LLM call describing the same page, and the
+  // free tier allows TWENTY REQUESTS PER DAY PER MODEL. Spending one on prose
+  // that E7 supersedes takes it directly from the synthesis budget of the
+  // report people actually read. Set QA_KEEP_V1_PROSE=1 to restore it.
+  const supersededByE7 = !!ctx.qa && process.env.QA_KEEP_V1_PROSE !== '1';
+  const prose = supersededByE7
+    ? { ok: false, reason: 'Superseded by the visual QA report (E7).' }
+    : await generateProseReport(assembled, alignment, sections, analysis);
   ctx.prose = prose;
 
   // The report call returns free-form prose, so there is no schema to constrain

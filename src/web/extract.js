@@ -68,6 +68,39 @@ const DETERMINISM_INIT = `
   // assume distinct values, and a fixed seed makes reruns identical.
   let seed = 42;
   Math.random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+
+  // Block LONG-DELAY timers.
+  //
+  // Pinning Date.now does not stop a carousel: the browser schedules timers on
+  // real elapsed time regardless of what the page can read from the clock. The
+  // testimonials carousel on the reference page advances during the ~20s the
+  // stabilization sequence takes, so which slide is showing - and therefore the
+  // height of every card and the y of everything below it - depends on how long
+  // extraction happened to take. Measured across three same-session runs: 19
+  // nodes moved, twelve of them in that one section by dy=36.
+  //
+  // Measured, not assumed: setInterval is NOT the driver (disabling it changes
+  // nothing) and rAF is not either. setTimeout is. Blocking setTimeout outright
+  // is not acceptable - pages defer real layout work with it - but the delays
+  // separate cleanly: auto-advance uses SECOND-scale delays, content-critical
+  // deferral is millisecond-scale. At a 2000ms threshold exactly 16 timers are
+  // blocked, the DOM is identical at 3,270 nodes, and the carousel holds still.
+  //
+  // 2000 is the most conservative value that works; 250ms also stabilises and
+  // blocks 40. Raise it if a site's content depends on a slow timer.
+  const LONG_TIMER_MS = 2000;
+  window.__parityBlockedTimers = 0;
+  const rawSetTimeout = window.setTimeout.bind(window);
+  const rawSetInterval = window.setInterval.bind(window);
+  window.__parityRawSetTimeout = rawSetTimeout;
+  window.setTimeout = function (fn, delay, ...rest) {
+    if (Number(delay) >= LONG_TIMER_MS) { window.__parityBlockedTimers++; return 0; }
+    return rawSetTimeout(fn, delay, ...rest);
+  };
+  window.setInterval = function (fn, delay, ...rest) {
+    if (Number(delay) >= LONG_TIMER_MS) { window.__parityBlockedTimers++; return 0; }
+    return rawSetInterval(fn, delay, ...rest);
+  };
 })();
 `;
 
@@ -110,7 +143,7 @@ export async function extractWeb(config, opts = {}) {
 
   // 2. Pin time and randomness BEFORE any page script runs.
   await context.addInitScript(DETERMINISM_INIT);
-  mark(2, 'init script: Date.now / performance.now / Math.random pinned');
+  mark(2, 'init script: Date.now / performance.now / Math.random pinned, long timers blocked');
 
   const page = await context.newPage();
 
@@ -268,6 +301,121 @@ export async function extractWeb(config, opts = {}) {
       );
     }
 
+    // 13. Settle scroll-driven ("pinned") sections.
+    //
+    // A pinned section is a tall scroll container holding a position:sticky
+    // viewport, inside which an animation plays as the user scrolls. Its HEIGHT
+    // is scroll distance, not layout: on the reference page one is 3,150px tall
+    // to animate content occupying about 900px on screen.
+    //
+    // Measuring at scrollTop therefore captures the animation's FIRST FRAME.
+    // Measured on that page: twelve cards that spread into a 3x4 grid were all
+    // recorded stacked at a single coordinate, and correspondence for the whole
+    // section collapsed (Tier 1 recall 0.071).
+    //
+    // Two corrections are applied together, and neither works alone:
+    //
+    //   1. Scroll each pinned container to the end of its animation and
+    //      re-measure its subtree there.
+    //   2. Re-express those rects against the STICKY VIEWPORT rather than the
+    //      scroll container. Section-relative geometry is otherwise normalised
+    //      against scroll distance - the design's cards span 100% of a 639px
+    //      section while the page's would occupy the bottom 17% of a 3,150px
+    //      one, and no matcher can reconcile that.
+    //
+    // The result is a compact band, the height of what a reader actually sees,
+    // anchored at the container's top.
+    const pinned = await page.evaluate(async ({ settleMs }) => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const out = [];
+      const vh = window.innerHeight;
+
+      // Group by container: a section can hold several sticky children (the
+      // reference page has one with six), and processing each would scroll and
+      // re-tag the same subtree repeatedly. Keep the tallest sticky per
+      // container - that is the viewport the animation plays inside.
+      const byContainer = new Map();
+      for (const el of document.querySelectorAll('*')) {
+        if (getComputedStyle(el).position !== 'sticky') continue;
+        const container = el.parentElement;
+        if (!container || container === document.body || container === document.documentElement) continue;
+        const prev = byContainer.get(container);
+        if (!prev || el.getBoundingClientRect().height > prev.getBoundingClientRect().height) {
+          byContainer.set(container, el);
+        }
+      }
+
+      for (const [container, sticky] of byContainer) {
+
+        const cRect0 = container.getBoundingClientRect();
+        const sRect0 = sticky.getBoundingClientRect();
+        // A scroll-driven container is much taller than the thing pinned inside
+        // it, and taller than the viewport. A sticky nav is neither.
+        if (cRect0.height < vh * 1.5) continue;
+        if (cRect0.height < sRect0.height * 2) continue;
+
+        const containerTop = cRect0.top + window.scrollY;
+
+        // End of the animation: the container's bottom edge reaches the
+        // viewport's bottom edge.
+        const target = Math.max(0, containerTop + cRect0.height - vh);
+        window.scrollTo(0, target);
+        await sleep(settleMs);
+
+        const sRect = sticky.getBoundingClientRect();
+        let tagged = 0;
+        for (const el of [container, ...container.querySelectorAll('*')]) {
+          const r = el.getBoundingClientRect();
+          el.__paritySettled = {
+            x: Math.round((r.left + window.scrollX) * 10) / 10,
+            // Anchor the sticky viewport at the container's top, so the section
+            // occupies the space a reader sees rather than the scroll distance.
+            y: Math.round((containerTop + (r.top - sRect.top)) * 10) / 10,
+            w: Math.round(r.width * 10) / 10,
+            h: Math.round(r.height * 10) / 10,
+          };
+          tagged++;
+        }
+        // The container itself becomes the VISUAL section: the sticky viewport's
+        // height, not the scroll distance.
+        container.__paritySettled = {
+          x: Math.round((cRect0.left + window.scrollX) * 10) / 10,
+          y: Math.round(containerTop * 10) / 10,
+          w: Math.round(cRect0.width * 10) / 10,
+          h: Math.round(sRect.height * 10) / 10,
+        };
+
+        out.push({
+          containerTop: Math.round(containerTop),
+          scrollHeight: Math.round(cRect0.height),
+          visualHeight: Math.round(sRect.height),
+          settledAtScroll: Math.round(target),
+          nodes: tagged,
+          // Where the pinned viewport sits ON SCREEN at the settled scroll.
+          // The capture pass needs this to photograph the same moment the
+          // geometry was measured in - without it, boxes describe the settled
+          // state while pixels show the animation's first frame.
+          stickyViewportRect: {
+            x: Math.round(sRect.left), y: Math.round(sRect.top),
+            w: Math.round(sRect.width), h: Math.round(sRect.height),
+          },
+          containerX: Math.round(cRect0.left + window.scrollX),
+        });
+      }
+
+      window.scrollTo(0, 0);
+      await sleep(settleMs);
+      return out;
+    }, { settleMs: 600 });
+
+    if (pinned.length) {
+      mark(13, `pinned sections settled (${pinned.length}: ${pinned.map((p) => `${p.scrollHeight}px->${p.visualHeight}px`).join(', ')})`);
+      log.log?.(
+        `      ${pinned.length} scroll-driven section(s) re-measured after their animation: ` +
+        pinned.map((p) => `${p.nodes} nodes, ${p.scrollHeight}px scroll -> ${p.visualHeight}px visual`).join('; ')
+      );
+    }
+
     // 12. Extract.
     const raw = await page.evaluate(serializePage, {
       allowlist: STYLE_ALLOWLIST,
@@ -282,6 +430,27 @@ export async function extractWeb(config, opts = {}) {
       mark(13, `CDP rendered fonts (${raw.renderedFonts.signatures.length} signatures, ${raw.renderedFonts.probes} probes)`);
     } else {
       raw.renderedFonts = { signatures: [], probes: 0, skipped: true };
+    }
+
+    // 14. Hand the stabilized page to a caller that wants pixels from it.
+    //
+    // DELIBERATELY LAST. Capturing a full page means scrolling, and scrolling is
+    // not free on a real site - the logo carousel on the reference page advances
+    // only while it is in view, so a screenshot pass run before extraction would
+    // change what extraction then measures. Running it here means the hook can
+    // perturb nothing: every number is already taken.
+    //
+    // This is the only way "pixels and measurements agree" can be guaranteed.
+    // Re-running the stabilization sequence in a second browser session would
+    // drift from this one silently.
+    // Attach the pinned manifest BEFORE the hook runs. The hook is what
+    // photographs those sections at their settled scroll, so handing it a `raw`
+    // that does not yet carry `pinned` silently skips exactly that work.
+    raw.pinned = pinned;
+
+    if (opts.onStabilized) {
+      await opts.onStabilized(page, raw);
+      mark(14, 'onStabilized hook');
     }
 
     raw.steps = steps;
