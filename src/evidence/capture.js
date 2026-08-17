@@ -87,6 +87,41 @@ export async function capturePinnedSections(page, pinned, outDir) {
   return written;
 }
 
+/** The settled-scroll captures written by `capturePinnedSections`, if any. */
+export function loadPinnedManifest(outDir) {
+  const path = evidencePaths(outDir).pinnedManifest;
+  if (!existsSync(path)) return [];
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The settled-scroll capture for a section, or null if it is not scroll-driven.
+ *
+ * Match on ORIGIN only, never on height. A pinned capture is the settled sticky
+ * viewport - 900px - while the section is the scroll container that houses it,
+ * up to 3,495px. Requiring the heights to agree rejects exactly the sections
+ * this exists for. Where containers nest, the widest wins: that is the outermost
+ * pinned viewport and the one the section corresponds to.
+ *
+ * SHARED, and that is the point. E6 evidence has selected images this way since
+ * the pinned fix landed; E2 correspondence did not, and cropped scroll-driven
+ * sections out of the scroll-top full-page image like any other. Phase D
+ * measured what that costs: on f6->w7 the model was shown one card, told about
+ * twelve, and answered `not_built` 28 times at 0.85 confidence. It was reading
+ * the picture correctly. Two copies of this rule is how that happened, so there
+ * is now one.
+ */
+export function pinnedForSection(manifest, section, tolerancePx = 8) {
+  if (!manifest?.length || !section) return null;
+  return manifest
+    .filter((m) => Math.abs(m.originY - section.y) <= tolerancePx)
+    .sort((a, b) => b.width - a.width)[0] ?? null;
+}
+
 /**
  * Crop section rectangles out of a full-page capture.
  *

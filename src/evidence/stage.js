@@ -9,7 +9,9 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { cropSections, evidencePaths, captureFigmaFrame } from './capture.js';
+import {
+  cropSections, evidencePaths, captureFigmaFrame, loadPinnedManifest, pinnedForSection,
+} from './capture.js';
 import { annotateIssue } from './annotate.js';
 
 const C = { reset: '\x1b[0m', dim: '\x1b[2m', bold: '\x1b[1m', green: '\x1b[32m', yellow: '\x1b[33m' };
@@ -77,17 +79,11 @@ export async function stageEvidence(ctx) {
     // evidence must come from the image taken THERE, not from the scroll-top
     // full-page capture. Without this the box is drawn over the animation's
     // first frame and the panel looks empty.
-    const pinnedManifest = existsSync(paths.pinnedManifest)
-      ? JSON.parse(readFileSync(paths.pinnedManifest, 'utf8'))
-      : [];
-    // Match on ORIGIN only, never on height. A pinned capture is the settled
-    // viewport - 900px - while the section is the scroll container that houses
-    // it, up to 3,495px. Requiring the heights to agree rejects exactly the
-    // sections this exists for. Where containers nest, the widest wins: that is
-    // the outermost pinned viewport and the one the section corresponds to.
-    const pinnedFor = (section) => pinnedManifest
-      .filter((m) => Math.abs(m.originY - section.y) <= 8)
-      .sort((a, b) => b.width - a.width)[0] ?? null;
+    // The matching rule lives in capture.js so E2 correspondence and E6 evidence
+    // cannot disagree about which image a scroll-driven section is shown as -
+    // they did, and Phase D measured the cost.
+    const pinnedManifest = loadPinnedManifest(ctx.config.outDir);
+    const pinnedFor = (section) => pinnedForSection(pinnedManifest, section);
 
     const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
     const pairByKey = new Map(ctx.elements.pairs.map((p) => [`${p.figmaIndex}:${p.webIndex}`, p]));
