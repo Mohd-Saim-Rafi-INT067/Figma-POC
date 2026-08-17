@@ -192,10 +192,44 @@ export function compareElementPairs(pair, aligned, nodes, tol) {
   const raw = [];
   const sizeMismatchParents = new Set();
 
+  /**
+   * Fan-in: several design elements may legitimately correspond to ONE page
+   * element (E2d `manyToOne`) - the design draws a button frame and its label
+   * where the page builds a single <button> carrying both.
+   *
+   * Both members must still be compared, because they carry DIFFERENT
+   * comparable properties: the frame has the fill, border and box, the label has
+   * the typography. Comparing only one loses half the findings.
+   *
+   * What must not happen is the same page element collecting the same property
+   * twice. So members are ordered by how well they correspond - a class match
+   * first, then the larger element - and the first to claim a (page element,
+   * property) keeps it. Overlap is usually small, since a text run has no
+   * background and a frame has no font, but on the stacked-control shape the
+   * members are near-identical and every property would otherwise double.
+   */
+  const areaOf = (el) => (el?.box?.w ?? 0) * (el?.box?.h ?? 0);
+  const correspondenceRank = (a) => {
+    const f = figmaByIndex[a.figmaIndex], w = webByIndex[a.webIndex];
+    return f && w && f.cls === w.cls ? 0 : 1;
+  };
+  const ordered = [...aligned].sort((p, q) =>
+    correspondenceRank(p) - correspondenceRank(q)
+    || areaOf(figmaByIndex[q.figmaIndex]) - areaOf(figmaByIndex[p.figmaIndex]));
+
+  const claimed = new Set();
+  /** True the first time this page element is judged on this property. */
+  const claims = (wElId, property) => {
+    const key = `${wElId}::${property}`;
+    if (claimed.has(key)) return false;
+    claimed.add(key);
+    return true;
+  };
+
   // Pass 1: scalars and size. Size is computed first because cascade
   // suppression needs to know which parents are mis-sized before positions are
   // judged.
-  for (const a of aligned) {
+  for (const a of ordered) {
     const fEl = figmaByIndex[a.figmaIndex];
     const wEl = webByIndex[a.webIndex];
     const fNode = nodes.figma.get(fEl.id);
@@ -228,6 +262,7 @@ export function compareElementPairs(pair, aligned, nodes, tol) {
       if (property === 'backgroundColor' && fEl.cls === 'text') continue;
       const hit = applyRule(rule, fProps[property], wProps[property]);
       if (!hit) continue;
+      if (!claims(wEl.id, property)) continue;   // fan-in: judged already
       raw.push(makeElementFinding(pair, a, fEl, wEl, 'element', property, rule.severity, hit));
     }
 
@@ -247,6 +282,7 @@ export function compareElementPairs(pair, aligned, nodes, tol) {
         const hit = applyRule(sizeRule, fEl.box[dim], wEl.box[dim]);
         if (!hit) continue;
         sizeMismatchParents.add(fEl.id);
+        if (!claims(wEl.id, `boxRelative.size.${dim}`)) continue;
         raw.push(makeElementFinding(pair, a, fEl, wEl, 'geometry', `boxRelative.size.${dim}`, sizeRule.severity, hit));
       }
     }
@@ -255,7 +291,7 @@ export function compareElementPairs(pair, aligned, nodes, tol) {
   // Pass 2: position, parent-relative, with cascade suppression.
   const posRule = rules['boxRelative.pos'];
   if (posRule) {
-    for (const a of aligned) {
+    for (const a of ordered) {
       const fEl = figmaByIndex[a.figmaIndex];
       const wEl = webByIndex[a.webIndex];
 
@@ -274,6 +310,7 @@ export function compareElementPairs(pair, aligned, nodes, tol) {
       for (const axis of ['x', 'y']) {
         const hit = applyRule(posRule, fRel[axis], wRel[axis]);
         if (!hit) continue;
+        if (!claims(wEl.id, `boxRelative.pos.${axis}`)) continue;
         raw.push(makeElementFinding(pair, a, fEl, wEl, 'geometry', `boxRelative.pos.${axis}`, posRule.severity, hit));
       }
     }

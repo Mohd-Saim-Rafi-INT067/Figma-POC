@@ -189,3 +189,46 @@ test('E3: a slot that aligns in ANY instance is not a composition finding', () =
   );
   assert.equal(v.findings.filter((f) => f.kind === 'slot-absent-in-web').length, 0);
 });
+
+test('E4: fan-in does not make one page element collect a finding twice', async () => {
+  const { compareElementPairs } = await import('../src/compare/properties.js');
+
+  // The documented shape: a design button frame and its label, both correctly
+  // corresponding to one built <button> (E2d manyToOne). Both carry a radius
+  // that disagrees with the page, so without deduplication the page element
+  // collects the same finding twice.
+  const mk = (id, cls, w, h, extra = {}) => ({
+    id, cls, box: { x: 0, y: 0, w, h }, yRel: 0, parentId: null,
+    sourceRef: { figmaNodeId: id, webSelector: id }, ...extra,
+  });
+  const node = (id, radius) => ({
+    id, role: 'container', text: null, type: null,
+    fill: { backgroundColor: null, gradients: [], imageRef: null, paints: [] },
+    border: { width: [0, 0, 0, 0], color: null, radius: [radius, radius, radius, radius], inset: true },
+    effects: [], opacity: 1, children: [],
+  });
+
+  const pair = {
+    figmaIndex: 0, webIndex: 0, confidence: 1,
+    figma: { sectionId: 'fsec', elements: [mk('btn', 'control', 200, 60), mk('label', 'text', 160, 20)] },
+    web: { sectionId: 'wsec', elements: [mk('w0', 'control', 195, 64)] },
+  };
+  const nodes = {
+    figma: new Map([['btn', node('btn', 24)], ['label', node('label', 24)]]),
+    web: new Map([['w0', node('w0', 4)]]),
+  };
+  const tol = {
+    rules: { 'border.radius': { match: 'abs', tolerance: 1, severity: 'medium' } },
+    elementCompare: {},
+  };
+
+  const aligned = [
+    { figmaIndex: 0, webIndex: 0, confidence: 0.9 },
+    { figmaIndex: 1, webIndex: 0, confidence: 0.8 },
+  ];
+  const findings = compareElementPairs(pair, aligned, nodes, tol);
+  const radius = findings.filter((f) => f.property === 'border.radius');
+
+  assert.equal(radius.length, 1, 'one page element, one radius verdict');
+  assert.equal(radius[0].element.figmaIndex, 0, 'attributed to the class-matching member, not the label');
+});
