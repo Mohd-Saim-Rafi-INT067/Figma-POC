@@ -4,29 +4,453 @@
   "figmaIndex": 15,
   "webIndex": 16,
   "sectionConfidence": 0.891,
-  "counts": { "figma": 72, "web": 47 },
-
+  "counts": {
+    "figma": 72,
+    "web": 47
+  },
   "_truth": "Keyed by the figma element's orderIndex. A number is the matching web orderIndex; 'missing' = designed but not built; 'decor' = design-only decoration; '?' = undecidable, excluded from scoring.",
   "truth": {
-    "0": "decor", "1": "decor", "2": "decor", "3": "decor", "4": "decor",
-    "5": "decor", "6": 6, "7": 7, "8": "?", "9": 8, "10": 9, "11": 12,
-    "12": 12, "13": 12, "14": 10, "15": 12, "16": "?", "17": "?", "18": "?",
-    "19": 13, "20": 20, "21": 20, "22": 20, "23": 18, "24": 20, "25": "?",
-    "26": "?", "27": "?", "28": 21, "29": "missing", "30": 28, "31": 28,
-    "32": 28, "33": 23, "34": 22, "35": 28, "36": "?", "37": "?", "38": "?",
-    "39": 28, "40": 28, "41": 28, "42": 23, "43": 25, "44": "missing",
-    "45": 28, "46": 27, "47": "?", "48": 29, "49": "?", "50": 28,
-    "51": "decor", "52": 33, "53": 33, "54": 33, "55": 31, "56": 30,
-    "57": "missing", "58": 33, "59": 32, "60": 34, "61": 36, "62": 35,
-    "63": 37, "64": 38, "65": 39, "66": 45, "67": 45, "68": 35, "69": 36,
-    "70": 45, "71": 46
+    "0": "decor",
+    "1": "decor",
+    "2": "decor",
+    "3": "decor",
+    "4": "decor",
+    "5": "decor",
+    "6": 6,
+    "7": 7,
+    "8": "?",
+    "9": 8,
+    "10": 9,
+    "11": 12,
+    "12": 10,
+    "13": 12,
+    "14": "?",
+    "15": "?",
+    "16": "?",
+    "17": 13,
+    "18": 20,
+    "19": 18,
+    "20": 20,
+    "21": "?",
+    "22": "?",
+    "23": "?",
+    "24": 21,
+    "25": "missing",
+    "26": 28,
+    "27": 23,
+    "28": 22,
+    "29": 28,
+    "30": "?",
+    "31": "?",
+    "32": "?",
+    "33": 28,
+    "34": 23,
+    "35": 25,
+    "36": "missing",
+    "37": 28,
+    "38": 27,
+    "39": "?",
+    "40": 29,
+    "41": "?",
+    "42": 28,
+    "43": "decor",
+    "44": 33,
+    "45": 33,
+    "46": 31,
+    "47": 30,
+    "48": "missing",
+    "49": 33,
+    "50": 32,
+    "51": 34,
+    "52": 36,
+    "53": 35,
+    "54": 37,
+    "55": 38,
+    "56": 39,
+    "57": 45,
+    "58": 35,
+    "59": 36,
+    "60": 45,
+    "61": 46
   },
-
   "_manyToOne": "The design expresses each form field as several stacked nodes (a control frame, its inner states and its label) where the page builds one <input>. Hence figma 11/12/13/15 all -> web 12, 20/21/22/24 -> web 20, and so on. Each figma row scores independently.",
-
   "_webExtra": "Background decoration boxes (0-5), the h2 span duplicate (11), and the second-field label/select/input group plus the newsletter widget (14-17, 19, 40-44).",
-  "webExtra": [0, 1, 2, 3, 4, 5, 11, 14, 15, 16, 17, 19, 40, 41, 42, 43, 44],
-
+  "webExtra": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    11,
+    14,
+    15,
+    16,
+    17,
+    19,
+    40,
+    41,
+    42,
+    43,
+    44
+  ],
   "_note": "Height ratio 1.18x. Seven design elements are 'decor' (large background blobs at negative y) and three are 'missing' (checkmark glyphs the page does not build). Fourteen rows are '?' - mostly the small helper glyphs and placeholder text inside the design's form controls, which have no separable counterpart in a built <input>.",
-  "conflicts": []
+  "conflicts": [],
+  "_rekeyed": "Re-keyed 2026-08-14 onto the element set produced with elements.collapseCoincidentChain = true (docs/v2-e2-rearchitecture.md X3). Indices changed; NO VERDICT CHANGED. 35 rows moved, 10 merged into a row that now covers the same pair, 0 lost. The pre-rekey truth is kept verbatim under _truthBeforeRekey and the row-by-row transform under _rekeyTrace.",
+  "_truthBeforeRekey": {
+    "0": "decor",
+    "1": "decor",
+    "2": "decor",
+    "3": "decor",
+    "4": "decor",
+    "5": "decor",
+    "6": 6,
+    "7": 7,
+    "8": "?",
+    "9": 8,
+    "10": 9,
+    "11": 12,
+    "12": 12,
+    "13": 12,
+    "14": 10,
+    "15": 12,
+    "16": "?",
+    "17": "?",
+    "18": "?",
+    "19": 13,
+    "20": 20,
+    "21": 20,
+    "22": 20,
+    "23": 18,
+    "24": 20,
+    "25": "?",
+    "26": "?",
+    "27": "?",
+    "28": 21,
+    "29": "missing",
+    "30": 28,
+    "31": 28,
+    "32": 28,
+    "33": 23,
+    "34": 22,
+    "35": 28,
+    "36": "?",
+    "37": "?",
+    "38": "?",
+    "39": 28,
+    "40": 28,
+    "41": 28,
+    "42": 23,
+    "43": 25,
+    "44": "missing",
+    "45": 28,
+    "46": 27,
+    "47": "?",
+    "48": 29,
+    "49": "?",
+    "50": 28,
+    "51": "decor",
+    "52": 33,
+    "53": 33,
+    "54": 33,
+    "55": 31,
+    "56": 30,
+    "57": "missing",
+    "58": 33,
+    "59": 32,
+    "60": 34,
+    "61": 36,
+    "62": 35,
+    "63": 37,
+    "64": 38,
+    "65": 39,
+    "66": 45,
+    "67": 45,
+    "68": 35,
+    "69": 36,
+    "70": 45,
+    "71": 46
+  },
+  "_rekeyTrace": [
+    {
+      "oldFi": 12,
+      "want": 12,
+      "newFi": 11,
+      "newWi": 12,
+      "merged": "already covered by row 11"
+    },
+    {
+      "oldFi": 13,
+      "want": 12,
+      "newFi": 11,
+      "newWi": 12,
+      "merged": "already covered by row 11"
+    },
+    {
+      "oldFi": 14,
+      "want": 10,
+      "newFi": 12,
+      "newWi": 10
+    },
+    {
+      "oldFi": 15,
+      "want": 12,
+      "newFi": 13,
+      "newWi": 12
+    },
+    {
+      "oldFi": 19,
+      "want": 13,
+      "newFi": 17,
+      "newWi": 13
+    },
+    {
+      "oldFi": 20,
+      "want": 20,
+      "newFi": 18,
+      "newWi": 20
+    },
+    {
+      "oldFi": 21,
+      "want": 20,
+      "newFi": 18,
+      "newWi": 20,
+      "merged": "already covered by row 20"
+    },
+    {
+      "oldFi": 22,
+      "want": 20,
+      "newFi": 18,
+      "newWi": 20,
+      "merged": "already covered by row 20"
+    },
+    {
+      "oldFi": 23,
+      "want": 18,
+      "newFi": 19,
+      "newWi": 18
+    },
+    {
+      "oldFi": 24,
+      "want": 20,
+      "newFi": 20,
+      "newWi": 20
+    },
+    {
+      "oldFi": 28,
+      "want": 21,
+      "newFi": 24,
+      "newWi": 21
+    },
+    {
+      "oldFi": 30,
+      "want": 28,
+      "newFi": 26,
+      "newWi": 28
+    },
+    {
+      "oldFi": 31,
+      "want": 28,
+      "newFi": 26,
+      "newWi": 28,
+      "merged": "already covered by row 30"
+    },
+    {
+      "oldFi": 32,
+      "want": 28,
+      "newFi": 26,
+      "newWi": 28,
+      "merged": "already covered by row 30"
+    },
+    {
+      "oldFi": 33,
+      "want": 23,
+      "newFi": 27,
+      "newWi": 23
+    },
+    {
+      "oldFi": 34,
+      "want": 22,
+      "newFi": 28,
+      "newWi": 22
+    },
+    {
+      "oldFi": 35,
+      "want": 28,
+      "newFi": 29,
+      "newWi": 28
+    },
+    {
+      "oldFi": 39,
+      "want": 28,
+      "newFi": 33,
+      "newWi": 28
+    },
+    {
+      "oldFi": 40,
+      "want": 28,
+      "newFi": 33,
+      "newWi": 28,
+      "merged": "already covered by row 39"
+    },
+    {
+      "oldFi": 41,
+      "want": 28,
+      "newFi": 33,
+      "newWi": 28,
+      "merged": "already covered by row 39"
+    },
+    {
+      "oldFi": 42,
+      "want": 23,
+      "newFi": 34,
+      "newWi": 23
+    },
+    {
+      "oldFi": 43,
+      "want": 25,
+      "newFi": 35,
+      "newWi": 25
+    },
+    {
+      "oldFi": 45,
+      "want": 28,
+      "newFi": 37,
+      "newWi": 28
+    },
+    {
+      "oldFi": 46,
+      "want": 27,
+      "newFi": 38,
+      "newWi": 27
+    },
+    {
+      "oldFi": 48,
+      "want": 29,
+      "newFi": 40,
+      "newWi": 29
+    },
+    {
+      "oldFi": 50,
+      "want": 28,
+      "newFi": 42,
+      "newWi": 28
+    },
+    {
+      "oldFi": 52,
+      "want": 33,
+      "newFi": 44,
+      "newWi": 33
+    },
+    {
+      "oldFi": 53,
+      "want": 33,
+      "newFi": 44,
+      "newWi": 33,
+      "merged": "already covered by row 52"
+    },
+    {
+      "oldFi": 54,
+      "want": 33,
+      "newFi": 45,
+      "newWi": 33
+    },
+    {
+      "oldFi": 55,
+      "want": 31,
+      "newFi": 46,
+      "newWi": 31
+    },
+    {
+      "oldFi": 56,
+      "want": 30,
+      "newFi": 47,
+      "newWi": 30
+    },
+    {
+      "oldFi": 58,
+      "want": 33,
+      "newFi": 49,
+      "newWi": 33
+    },
+    {
+      "oldFi": 59,
+      "want": 32,
+      "newFi": 50,
+      "newWi": 32
+    },
+    {
+      "oldFi": 60,
+      "want": 34,
+      "newFi": 51,
+      "newWi": 34
+    },
+    {
+      "oldFi": 61,
+      "want": 36,
+      "newFi": 52,
+      "newWi": 36
+    },
+    {
+      "oldFi": 62,
+      "want": 35,
+      "newFi": 53,
+      "newWi": 35
+    },
+    {
+      "oldFi": 63,
+      "want": 37,
+      "newFi": 54,
+      "newWi": 37
+    },
+    {
+      "oldFi": 64,
+      "want": 38,
+      "newFi": 55,
+      "newWi": 38
+    },
+    {
+      "oldFi": 65,
+      "want": 39,
+      "newFi": 56,
+      "newWi": 39
+    },
+    {
+      "oldFi": 66,
+      "want": 45,
+      "newFi": 57,
+      "newWi": 45
+    },
+    {
+      "oldFi": 67,
+      "want": 45,
+      "newFi": 57,
+      "newWi": 45,
+      "merged": "already covered by row 66"
+    },
+    {
+      "oldFi": 68,
+      "want": 35,
+      "newFi": 58,
+      "newWi": 35
+    },
+    {
+      "oldFi": 69,
+      "want": 36,
+      "newFi": 59,
+      "newWi": 36
+    },
+    {
+      "oldFi": 70,
+      "want": 45,
+      "newFi": 60,
+      "newWi": 45
+    },
+    {
+      "oldFi": 71,
+      "want": 46,
+      "newFi": 61,
+      "newWi": 46
+    }
+  ]
 }

@@ -1,32 +1,106 @@
 {
   "_": "Hand-established ground truth for correspondence, figma section 14 -> web section 15 (the testimonials carousel). Scored by the user 2026-08-12.",
-
   "_reindexed": "2026-08-12: RE-INDEXED, not re-judged. Stabilising extraction (long-timer blocking, see src/web/extract.js) pinned the carousel, which changed the web element list from 27 to 26 and shifted every index from 11 onward. The user's judgements were carried across by matching elements geometrically between the old sheet and the new list - every pairing survived except one, noted below. No pairing was re-decided. The old->new index map is kept so this is auditable rather than trusted.",
   "_oldToNewWebIndex": {
-    "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
-    "10": 10, "11": null, "12": 12, "13": 13, "14": 14, "15": 16, "16": 11,
-    "17": 18, "18": 15, "19": 17, "20": 19, "21": 20, "22": 21, "23": 22,
-    "24": 23, "25": 24, "26": 25
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9,
+    "10": 10,
+    "11": null,
+    "12": 12,
+    "13": 13,
+    "14": 14,
+    "15": 16,
+    "16": 11,
+    "17": 18,
+    "18": 15,
+    "19": 17,
+    "20": 19,
+    "21": 20,
+    "22": 21,
+    "23": 22,
+    "24": 23,
+    "25": 24,
+    "26": 25
   },
   "_droppedPairing": "figma 11 was matched to old web 11, a 350x350 decorative blob at x=46 belonging to the carousel's leftmost slide. With the carousel pinned that slide is off-screen and the blob is no longer extracted, so figma 11 now has no counterpart in the element set. Recorded as '?' - excluded from scoring - rather than 'missing', because the element IS built; it is simply outside what a pinned carousel exposes. Marking it 'missing' would assert a defect that does not exist.",
-
   "run": "20260812 post-stabilisation run (22 figma / 26 web)",
   "figmaIndex": 14,
   "webIndex": 15,
   "sectionConfidence": 0.751,
-  "counts": { "figma": 22, "web": 26 },
-
+  "counts": {
+    "figma": 22,
+    "web": 26
+  },
   "_truth": "Keyed by the figma element's orderIndex. A number is the matching web orderIndex; 'missing' = designed but not built; 'decor' = design-only decoration; '?' = undecidable or not extractable, excluded from scoring.",
   "truth": {
-    "0": 0, "1": 1, "2": "?", "3": 2, "4": 3, "5": 4, "6": 5, "7": 6,
-    "8": 7, "9": 8, "10": 9, "11": "?", "12": 12, "13": 10, "14": 11,
-    "15": 16, "16": 17, "17": 14, "18": 15, "19": 18, "20": 19, "21": 20
+    "0": 0,
+    "1": 1,
+    "2": "?",
+    "3": 2,
+    "4": 3,
+    "5": 4,
+    "6": 5,
+    "7": 6,
+    "8": 7,
+    "9": 8,
+    "10": 9,
+    "11": "?",
+    "12": 12,
+    "13": 10,
+    "14": 11,
+    "15": 16,
+    "16": 17,
+    "17": 14,
+    "18": 15,
+    "19": 18,
+    "20": 19,
+    "21": 20
   },
-
   "_webExtra": "Web 13 is the third carousel slide's decorative blob, off to the right of the visible window. Web 21-25 are the five inactive carousel dots, left blank on the original sheet; unclaimed either way, so they do not affect precision.",
-  "webExtra": [13],
-  "webUnmarked": [21, 22, 23, 24, 25],
-
+  "webExtra": [
+    13
+  ],
+  "webUnmarked": [
+    21,
+    22,
+    23,
+    24,
+    25
+  ],
   "_note": "No conflicts: every figma claim agreed with the web column on the original sheet. This pair contains NO 'missing' and NO 'decor' - every designed element was built. Four pairings cross in naive reading order (f13->w10, f14->w11, f16->w17, f19->w18), the two-column interleaving that motivated column-banded ordering in anchors.js.",
-  "conflicts": []
+  "conflicts": [],
+  "_rekeyed": "Re-keyed 2026-08-14 onto the element set produced with elements.collapseCoincidentChain = true (docs/v2-e2-rearchitecture.md X3). Indices changed; NO VERDICT CHANGED. 0 rows moved, 0 merged into a row that now covers the same pair, 0 lost. The pre-rekey truth is kept verbatim under _truthBeforeRekey and the row-by-row transform under _rekeyTrace.",
+  "_truthBeforeRekey": {
+    "0": 0,
+    "1": 1,
+    "2": "?",
+    "3": 2,
+    "4": 3,
+    "5": 4,
+    "6": 5,
+    "7": 6,
+    "8": 7,
+    "9": 8,
+    "10": 9,
+    "11": "?",
+    "12": 12,
+    "13": 10,
+    "14": 11,
+    "15": 16,
+    "16": 17,
+    "17": 14,
+    "18": 15,
+    "19": 18,
+    "20": 19,
+    "21": 20
+  },
+  "_rekeyTrace": []
 }
