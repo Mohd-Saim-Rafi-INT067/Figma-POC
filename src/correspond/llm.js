@@ -1,13 +1,25 @@
 /**
- * E2 Tier 2 - vision correspondence. Contract: docs/v2-tier2-contract.md.
+ * E2c - shortlist adjudication. Contract: docs/v2-e2-rearchitecture.md §3.
  *
  * The model decides IDENTITY. It never produces a measurement, never sees a
- * text string, and never overrides Tier 1.
+ * style value, and never invents an element.
  *
- * The schema is enforced at field level by the provider (measured), so no
- * numeric field but `confidence` can come back. It is NOT enforced for string
- * length, and `descriptor` absorbs geometry under pressure - also measured - so
- * that field is screened here rather than trusted.
+ * THE CHANGE FROM THE PREVIOUS TIER 2, and it is the load-bearing one: the
+ * model no longer types ids. It is given, per design element, a numbered list of
+ * candidate page elements that geometry already ranked, and it returns AN INDEX
+ * INTO THAT LIST. Three consequences follow, and none of them depend on the
+ * model cooperating:
+ *
+ *   - a phantom id is structurally impossible. The worst failure mode in the old
+ *     contract (§7.2, "fatal - the model invented an element") stops being a
+ *     check and becomes an invariant;
+ *   - the payload is bounded at n*k rows rather than n*m free search;
+ *   - the ceiling is knowable before spending anything. Measured: the true
+ *     partner is in the top 8 for 90.1% of true matches.
+ *
+ * Why a shortlist rather than the residue the old design sent: Tier 1 consumed
+ * both elements of every wrong pair it made, so 47.8% of true matches never
+ * reached the residue at all and a perfect model was capped at 52.2% recall.
  */
 
 import { readFileSync } from 'node:fs';
@@ -15,19 +27,34 @@ import { readFileSync } from 'node:fs';
 const MODEL = process.env.LLM_MODEL?.trim() || 'gemini-3.5-flash';
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+/**
+ * `pick` is an INTEGER, and -1 rather than null means "no correspondence".
+ *
+ * The plan specified null. Provider schema support for nullable integers is not
+ * something to discover mid-benchmark, and a sentinel is trivially validated
+ * where a null is not, so the deviation is deliberate and recorded here.
+ */
+const NO_MATCH = -1;
+
 const RESPONSE_SCHEMA = {
-  type: 'ARRAY',
-  items: {
-    type: 'OBJECT',
-    properties: {
-      figmaId:    { type: 'STRING' },
-      webId:      { type: 'STRING' },
-      decision:   { type: 'STRING', enum: ['match', 'missing_in_web', 'extra_in_web'] },
-      confidence: { type: 'NUMBER' },
-      descriptor: { type: 'STRING', description: 'A short human name for the element, e.g. "primary CTA button". Never numbers.' },
+  type: 'OBJECT',
+  properties: {
+    assignments: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          f: { type: 'INTEGER', description: 'The number in brackets beside the design element.' },
+          pick: { type: 'INTEGER', description: 'Index of the chosen candidate, or -1 for no correspondence.' },
+          confidence: { type: 'NUMBER' },
+          reason: { type: 'STRING', enum: ['not_built', 'ambiguous', 'none_plausible', 'matched'] },
+          descriptor: { type: 'STRING', description: 'A short human name, e.g. "primary CTA button". Never numbers.' },
+        },
+        required: ['f', 'pick', 'confidence', 'reason', 'descriptor'],
+      },
     },
-    required: ['figmaId', 'webId', 'decision', 'confidence', 'descriptor'],
   },
+  required: ['assignments'],
 };
 
 /** Anything that looks like a measurement. Descriptors matching this lose the label. */
@@ -37,25 +64,33 @@ const SYSTEM = `
 You match elements between a DESIGN (Figma) and the BUILT WEB PAGE of the same section.
 
 You are given two images of the same section - the design and the live page - and
-lists of elements from each that have not yet been matched by geometry.
+a list of design elements. Each design element comes with NUMBERED CANDIDATES:
+page elements that geometry considers plausible, best guess first.
 
-Decide which design elements correspond to which page elements.
+For each design element, choose which candidate is the same thing.
 
 Rules:
-- Judge by what the images show. The element lists give you ids and boxes; the
-  images tell you what things ARE.
-- The two sides often differ: content is real on the page and placeholder in the
-  design, layouts get rearranged during build, and one designed card may be
-  built as twelve. Corresponding elements need not look identical - they need to
-  be the same THING.
+- Identify the design element by the number in ITS brackets, like DESIGN (12) -> f: 12.
+  Answer with the candidate's number in square brackets, like [3] -> pick: 3.
+  Both are plain integers. Never write an id, a label or any other text in them.
+- Never answer with a candidate number that is not in that element's own list.
+- Geometry ordered the candidates but is often wrong about which is correct - that
+  is why you are being asked. Candidate 0 is a suggestion, not an answer.
+- Judge by what the images show. The lists give ids, boxes and text; the images
+  tell you what things ARE.
+- The two sides legitimately differ: copy is real on the page and placeholder in
+  the design, layouts get rearranged during the build, and one designed card may
+  be built as twelve. Corresponding elements need not look identical - they need
+  to be the same THING.
 - An icon in the design is frequently built as a text character, a button or an
-  image. Do not reject a pairing because the classes differ.
-- If a design element was not built, say missing_in_web. If a page element was
-  never designed, say extra_in_web. Use the empty string for the id that does
-  not exist.
-- Only claim a match you would defend. Confidence is what we act on: below 0.6
-  the pair is discarded entirely, so an honest 0.5 is more useful than a
-  hopeful 0.9.
+  image. Do not reject a pairing because the kinds differ.
+- If no candidate is the counterpart, answer -1. Use reason "not_built" if the
+  design element was never built, "none_plausible" if the right element is simply
+  not in the list, and "ambiguous" if several are equally good and you cannot
+  separate them.
+- Confidence is what we act on. Below 0.6 the answer is discarded entirely, so an
+  honest 0.5 is more useful than a hopeful 0.9. A guess between two identical
+  candidates should be "ambiguous", not a confident pick.
 - descriptor is a SHORT HUMAN NAME, like "testimonial author avatar". Never put
   numbers, coordinates, colours or sizes in it.
 `.trim();
@@ -64,40 +99,76 @@ const asPart = (path) => ({
   inline_data: { mime_type: 'image/png', data: readFileSync(path).toString('base64') },
 });
 
-/** Compact element record - no text, no style values (contract §2). */
-const line = (e) =>
-  `${e.id} | ${e.cls} | x=${Math.round(e.box.x)} y=${Math.round(e.box.y)} ` +
-  `w=${Math.round(e.box.w)} h=${Math.round(e.box.h)}` +
-  `${e.hasText ? ' | has-text' : ''}` +
-  `${e.templateId ? ` | repeated#${e.templateIndex}` : ''}`;
+/**
+ * One element as a prompt line.
+ *
+ * Carries id, kind, box and text - and NOTHING measured. No colour, no radius,
+ * no font size, no Tier 1 confidence. A value the model never sees is a value it
+ * cannot hand back as a finding, which is what keeps E4's verdicts E4's.
+ *
+ * Text is included from Phase C onward: it is an identity signal, it is measured
+ * to be worth 14 points of recall@1, and it is not a measured VALUE. It is
+ * truncated hard here as well as at E1 - a prompt is not the place to discover
+ * that a paragraph was long.
+ */
+const line = (e) => {
+  const text = e.textKey ? ` | "${e.textKey.slice(0, 60)}"` : '';
+  const tpl = e.templateId ? ` | instance ${e.templateIndex}` : '';
+  return `${e.cls} | x=${Math.round(e.box.x)} y=${Math.round(e.box.y)} ` +
+    `w=${Math.round(e.box.w)} h=${Math.round(e.box.h)}${text}${tpl}`;
+};
 
-function buildPrompt({ figmaUnresolved, webUnresolved, anchored }) {
-  const anchoredBlock = anchored.length
-    ? anchored.map((a) => `  ${a.figmaId}  <->  ${a.webId}`).join('\n')
-    : '  (none)';
+/**
+ * Build the question for one batch.
+ *
+ * BOTH sides of the answer are numbers, and neither is an id the model types.
+ *
+ * The first version of this prompt put the design element's raw id on a line
+ * beginning "DESIGN ", and the model answered "DESIGN 2743:6912" - copying the
+ * label along with the id, which is a perfectly reasonable reading of the text
+ * it was shown. 45 of 47 answers were unresolvable. That is a prompt defect, not
+ * a model defect, and the fix is to remove the opportunity rather than to parse
+ * around it: an integer index cannot be copied wrongly, and verify.js can check
+ * it against the exact list this function was given.
+ *
+ * @param batch [{ index, figmaEl, candidates: [webEl] }] - candidates ranked
+ */
+export function buildPrompt(batch) {
+  const blocks = batch.map(({ index, figmaEl, candidates }) => {
+    const rows = candidates.length
+      ? candidates.map((w, i) => `  [${i}] ${line(w)}`).join('\n')
+      : '  (no plausible candidates - answer -1)';
+    return `DESIGN (${index}) ${line(figmaEl)}\n${rows}`;
+  });
 
-  return `
-Already matched by geometry - use these as reference points, do not re-decide them:
-${anchoredBlock}
-
-UNMATCHED DESIGN ELEMENTS (id | class | box):
-${figmaUnresolved.map(line).join('\n') || '  (none)'}
-
-UNMATCHED PAGE ELEMENTS (id | class | box):
-${webUnresolved.map(line).join('\n') || '  (none)'}
-
-Return one entry per decision you are willing to make.
-`.trim();
+  return `${blocks.join('\n\n')}\n\nAnswer once for every design element above, ` +
+    'using its bracketed number as "f".';
 }
 
 /**
- * One Tier 2 call for one section pair.
+ * One adjudication call for one batch of design elements.
  *
- * @returns {{ok: boolean, proposals: Array, usage: object, reason?: string}}
+ * @returns {{ok: boolean, assignments: Array, usage: object, reason?: string}}
  */
-export async function proposeCorrespondence({
-  figmaImage, webImage, figmaUnresolved, webUnresolved, anchored, apiKey, model = MODEL,
+export async function adjudicate({
+  figmaImage, webImage, batch, apiKey, model = MODEL, maxOutputTokens = 8192,
+  retries = 4, backoffMs = 2000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }) {
+  let attempt = 0;
+  for (;;) {
+    const call = await attemptOnce();
+    // 503 "high demand" and 429 are transient and were observed to cost half of
+    // a benchmark run when treated as terminal. A batch is worth retrying; a
+    // schema or parse failure is not, because it will fail identically.
+    const transient = call.ok ? false : /^(429|500|502|503|504)\b/.test(call.reason ?? '');
+    if (call.ok || !transient || attempt >= retries) {
+      return attempt ? { ...call, usage: { ...call.usage, attempts: attempt + 1 } } : call;
+    }
+    await sleep(backoffMs * 2 ** attempt);
+    attempt++;
+  }
+
+  async function attemptOnce() {
   const started = Date.now();
 
   const body = {
@@ -106,18 +177,19 @@ export async function proposeCorrespondence({
       role: 'user',
       parts: [
         // The design render can be absent when Figma quota is exhausted. That is
-        // a DIFFERENT and weaker experiment - structure-only correspondence -
-        // and is labelled as such wherever it is reported. It is never the gate.
+        // a DIFFERENT and weaker experiment and is labelled as such wherever it
+        // is reported. It is never the gate.
         ...(figmaImage
           ? [{ text: 'DESIGN (Figma) render of this section:' }, asPart(figmaImage)]
           : [{ text: 'No design render is available for this section; reason from the element lists alone.' }]),
-        { text: 'BUILT PAGE render of the same section:' },
-        asPart(webImage),
-        { text: buildPrompt({ figmaUnresolved, webUnresolved, anchored }) },
+        ...(webImage
+          ? [{ text: 'BUILT PAGE render of the same section:' }, asPart(webImage)]
+          : [{ text: 'No page render is available for this section.' }]),
+        { text: buildPrompt(batch) },
       ],
     }],
     generationConfig: {
-      maxOutputTokens: 8192,
+      maxOutputTokens,
       temperature: 0,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
@@ -135,7 +207,11 @@ export async function proposeCorrespondence({
   const elapsedMs = Date.now() - started;
 
   if (!res.ok || json?.error) {
-    return { ok: false, reason: `${res.status} ${String(json?.error?.message ?? res.statusText).slice(0, 200)}`, usage: { elapsedMs } };
+    return {
+      ok: false,
+      reason: `${res.status} ${String(json?.error?.message ?? res.statusText).slice(0, 200)}`,
+      usage: { elapsedMs },
+    };
   }
 
   const candidate = json.candidates?.[0];
@@ -156,24 +232,35 @@ export async function proposeCorrespondence({
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    // Measured failure mode: under pressure the model pads `descriptor` until it
-    // hits the ceiling and the JSON truncates. Fail the call, never half-parse.
+    // Measured failure mode on the old contract: under pressure the model pads
+    // free text until it hits the ceiling and the JSON truncates. Fail the call,
+    // never half-parse. Batching exists so one such failure costs its own batch
+    // and nothing else.
     return { ok: false, reason: `invalid JSON (${err.message}); finishReason ${usage.finishReason}`, usage };
   }
-  if (!Array.isArray(parsed)) return { ok: false, reason: 'response was not an array', usage };
+
+  const list = parsed?.assignments;
+  if (!Array.isArray(list)) return { ok: false, reason: 'response carried no assignments array', usage };
 
   let descriptorsDropped = 0;
-  const proposals = parsed.map((p) => {
-    let descriptor = typeof p.descriptor === 'string' ? p.descriptor.slice(0, 60) : '';
+  const assignments = list.map((a) => {
+    let descriptor = typeof a.descriptor === 'string' ? a.descriptor.slice(0, 60) : '';
     if (MEASUREMENT_LIKE.test(descriptor)) { descriptor = ''; descriptorsDropped++; }
     return {
-      figmaId: String(p.figmaId ?? ''),
-      webId: String(p.webId ?? ''),
-      decision: p.decision,
-      confidence: Number(p.confidence) || 0,
+      // Left as-is when it is not an integer, so verify.js can count the failure
+      // rather than have it silently become element 0.
+      f: Number.isInteger(a.f) ? a.f : a.f ?? null,
+      // Coerced here so verify.js sees a number or NO_MATCH and never a string
+      // that happens to look like one. Anything unparseable becomes "no answer".
+      pick: Number.isInteger(a.pick) ? a.pick : NO_MATCH,
+      confidence: Number(a.confidence) || 0,
+      reason: a.reason ?? 'matched',
       descriptor,
     };
   });
 
-  return { ok: true, proposals, usage: { ...usage, descriptorsDropped } };
+  return { ok: true, assignments, usage: { ...usage, descriptorsDropped } };
+  }
 }
+
+export { NO_MATCH, RESPONSE_SCHEMA, SYSTEM };

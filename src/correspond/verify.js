@@ -1,151 +1,182 @@
 /**
- * E2 Tier 3 - verification. Code, always. Contract: docs/v2-tier2-contract.md §4.
+ * E2d - verification and assignment. Code, always.
  *
- * The model proposes; the engine disposes. Every proposal is checked against
+ * The model proposes; the engine disposes. Every answer is checked against
  * measured IR before it is allowed to exist, and rejections are logged, never
  * reported.
  *
- * Class is a hard filter in Tier 1 (measured: relaxing it costs 17 points of
- * precision) but only a floor here, deliberately - arbitrating a design glyph
- * built as a <button> is exactly the semantic judgement Tier 2 exists to make.
+ * The checks from the old contract (v2-tier2-contract.md §4) all survive. What
+ * changed is that the FATAL one can no longer happen: the model returns an index
+ * into a list this module supplied, so an id it invented has nowhere to go. The
+ * phantom check is retained anyway, as an assertion - if it ever fires, the
+ * harness is wired wrongly and every number it produced is suspect.
+ *
+ * The proximity veto is GONE. It was measured on unseen ground truth to remove
+ * correct pairs (recall 44.4% -> 43.2%) for a precision gain the shortlist
+ * architecture gets for free, and the contract already recorded it as rejected.
  */
 
-function classCompatibility(a, b, table) {
-  if (a.cls === b.cls) return 1;
-  return table[[a.cls, b.cls].sort().join('~')] ?? table.default;
-}
+import { classCompatibility } from './candidates.js';
+import { NO_MATCH } from './llm.js';
 
-const yGap = (a, b) => Math.abs(a.yRel - b.yRel);
-
-/** 1-D IoU of the x extents - alignment, not containment. Mirrors anchors.js. */
-function xAlign(a, b) {
-  const lo = Math.max(a.box.x, b.box.x);
-  const hi = Math.min(a.box.x + a.box.w, b.box.x + b.box.w);
-  const inter = Math.max(0, hi - lo);
-  const union = Math.max(a.box.x + a.box.w, b.box.x + b.box.w) - Math.min(a.box.x, b.box.x);
-  return inter / Math.max(1, union);
+/**
+ * Do these two design elements sit on one ancestor chain?
+ *
+ * The permission test for many-to-one. The ground truth's own diagnosis is that
+ * legitimate fan-in happens when the design expresses ONE thing as several
+ * nested nodes - "a control frame, its inner states and its label" - which the
+ * page builds as a single element. That is an ancestor chain. Two unrelated
+ * design elements pointing at one page element is not fan-in, it is a mistake,
+ * and this is what separates them.
+ */
+function sharesAncestorChain(aIndex, bIndex, elements) {
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const chain = (start) => {
+    const out = new Set();
+    let el = elements[start];
+    while (el) { out.add(el.id); el = el.parentId ? byId.get(el.parentId) : null; }
+    return out;
+  };
+  const up = chain(aIndex);
+  return chain(bIndex).has(elements[aIndex].id) || up.has(elements[bIndex].id);
 }
 
 /**
- * Proximity veto - contract §4.2. EXPERIMENT, off by default.
+ * Verify one section's answers and resolve them into an assignment.
  *
- * A plausibility check, never a matcher. It can only REMOVE a claim; it never
- * substitutes the alternative it found, never re-pairs, never proposes. The
- * moment geometry picks the counterpart, geometry is deciding identity, and
- * that is the boundary the architecture rests on.
- *
- * Only TIER 1 ANCHORS count as claims when looking for alternatives. Tier 2's
- * proposals are all under evaluation simultaneously, so treating them as claims
- * would make the outcome depend on evaluation order and let one wrong proposal
- * shield another.
+ * @param assignments  what the model returned, already coerced by llm.js
+ * @param shortlists   Map<figmaIndex, [{ webIndex }]> - EXACTLY what was sent
+ * @param asked        Set<figmaIndex> - the elements actually put to the model
  */
-function proximityVeto(f, w, { webElements, anchorClaimedWeb, cfg, classTable }) {
-  const baseCompat = classCompatibility(f, w, classTable);
-  const baseY = yGap(f, w);
-  const baseX = xAlign(f, w);
-
-  const better = [];
-  for (let i = 0; i < webElements.length; i++) {
-    const alt = webElements[i];
-    if (alt === w) continue;
-    if (anchorClaimedWeb.has(i)) continue;
-    if (classCompatibility(f, alt, classTable) < baseCompat) continue;
-    if (yGap(f, alt) + cfg.marginY > baseY) continue;      // not strictly closer by the margin
-    if (xAlign(f, alt) < baseX) continue;                  // worse horizontally
-    better.push({ index: i, yGap: +yGap(f, alt).toFixed(3), xAlign: +xAlign(f, alt).toFixed(3) });
-  }
-
-  return better.length
-    ? { vetoed: true, alternatives: better.length, best: better[0], baseY: +baseY.toFixed(3), baseX: +baseX.toFixed(3) }
-    : { vetoed: false };
-}
-
-/**
- * @returns {{accepted: Array, rejected: Array, counts: object}}
- */
-export function verifyProposals(proposals, { figmaSet, webSet, anchors, sectionConfidence, cfg }) {
-  const figmaById = new Map(figmaSet.elements.map((e, i) => [e.sourceRef.figmaNodeId ?? e.id, { el: e, index: i }]));
-  const webById = new Map(webSet.elements.map((e, i) => [e.sourceRef.webSelector ?? e.id, { el: e, index: i }]));
-
-  // Tier 1 owns these outright and Tier 2 never revisits them.
-  const claimedFigma = new Set(anchors.map((a) => a.figmaIndex));
-  const claimedWeb = new Set(anchors.map((a) => a.webIndex));
-
+export function verifyAssignments(assignments, {
+  figmaSet, webSet, shortlists, asked, sectionConfidence, cfg,
+}) {
   const accepted = [];
   const rejected = [];
   const counts = {
-    proposals: proposals.length,
-    phantomId: 0, doubleAssignment: 0, classIncompatible: 0,
-    belowFloor: 0, notAMatch: 0, proximityVetoed: 0, accepted: 0,
+    answers: assignments.length,
+    phantomId: 0, pickOutOfRange: 0, declined: 0,
+    classIncompatible: 0, templateMismatch: 0,
+    belowFloor: 0, conflictLost: 0, fanInRefused: 0, accepted: 0,
   };
 
-  const reject = (proposal, reason) => { rejected.push({ proposal, reason }); return false; };
+  const reject = (a, reason) => rejected.push({ answer: a, reason });
+  const manyToOne = cfg.manyToOne ?? { enabled: false };
 
-  for (const p of proposals) {
-    if (p.decision !== 'match') { counts.notAMatch++; continue; }   // structural verdicts are E3's
+  // --- pass 1: per-answer validity -----------------------------------------
+  const valid = [];
+  for (const a of assignments) {
+    const figmaIndex = a.f;
 
-    const f = figmaById.get(p.figmaId);
-    const w = webById.get(p.webId);
-
-    // Phantom id - the model invented an element. The fatal failure mode.
-    if (!f || !w) { counts.phantomId++; reject(p, !f && !w ? 'both ids unknown' : !f ? 'figmaId unknown' : 'webId unknown'); continue; }
-
-    if (claimedFigma.has(f.index) || claimedWeb.has(w.index)) {
-      counts.doubleAssignment++; reject(p, 'element already claimed'); continue;
+    // The model was handed these numbers, so this is unreachable when the prompt
+    // and the harness agree. Retained as an assertion because it is exactly how
+    // the first X4 run was caught: a "DESIGN <id>" label made the model answer
+    // with the label attached, and 45 of 47 answers were unresolvable. Without
+    // this counter that run would have looked like a model that declines a lot.
+    if (!Number.isInteger(figmaIndex) || !asked.has(figmaIndex)) {
+      counts.phantomId++;
+      reject(a, `design element ${JSON.stringify(a.f)} was never asked about - HARNESS BUG`);
+      continue;
     }
 
-    const compat = classCompatibility(f.el, w.el, cfg.classCompatibility);
+    if (a.pick === NO_MATCH) { counts.declined++; continue; }   // a verdict for E3, not a pair
+
+    const list = shortlists.get(figmaIndex) ?? [];
+    if (!Number.isInteger(a.pick) || a.pick < 0 || a.pick >= list.length) {
+      counts.pickOutOfRange++; reject(a, `pick ${a.pick} outside 0..${list.length - 1}`); continue;
+    }
+
+    const webIndex = list[a.pick].webIndex;
+    const f = figmaSet.elements[figmaIndex], w = webSet.elements[webIndex];
+
+    const compat = classCompatibility(f, w, cfg.classCompatibility);
     if (compat < cfg.classCompatibility.default) {
-      counts.classIncompatible++; reject(p, `classes incompatible (${f.el.cls} vs ${w.el.cls})`); continue;
+      counts.classIncompatible++; reject(a, `classes incompatible (${f.cls} vs ${w.cls})`); continue;
     }
 
-    // Section confidence multiplies in: a claim cannot be stronger than the
-    // section match it rests on (contract §5).
-    const effective = +(p.confidence * sectionConfidence).toFixed(3);
+    // Template-instance consistency: instance i should map to instance i. Only
+    // enforced when BOTH sides carry template identity, because coverage is
+    // partial and absence is not disagreement.
+    if (f.templateId && w.templateId && f.templateIndex !== w.templateIndex) {
+      counts.templateMismatch++;
+      reject(a, `template instance ${f.templateIndex} -> ${w.templateIndex}`);
+      continue;
+    }
+
+    // A claim cannot be stronger than the section match it rests on.
+    const effective = +(a.confidence * sectionConfidence).toFixed(3);
     if (effective < cfg.confidenceGate.lowConfidence) {
-      counts.belowFloor++; reject(p, `effective confidence ${effective} below ${cfg.confidenceGate.lowConfidence}`); continue;
+      counts.belowFloor++; reject(a, `effective confidence ${effective} below ${cfg.confidenceGate.lowConfidence}`); continue;
     }
 
-    // Plausibility veto - last, so it only ever removes a claim that has already
-    // passed every structural check. Experiment; default off.
-    if (cfg.proximityVeto?.enabled) {
-      const veto = proximityVeto(f.el, w.el, {
-        webElements: webSet.elements,
-        anchorClaimedWeb: new Set(anchors.map((a) => a.webIndex)),
-        cfg: cfg.proximityVeto,
-        classTable: cfg.classCompatibility,
-      });
-      if (veto.vetoed) {
-        counts.proximityVetoed++;
-        rejected.push({
-          proposal: p,
-          reason: `proximity veto: ${veto.alternatives} unclaimed same-class alternative(s) closer in y ` +
-            `(best yGap ${veto.best.yGap} vs ${veto.baseY}, xAlign ${veto.best.xAlign} vs ${veto.baseX})`,
-        });
+    valid.push({ answer: a, figmaIndex, webIndex, compat, effective });
+  }
+
+  // --- pass 2: resolve competition for the same page element ----------------
+  // Highest effective confidence wins. Ties break on figma index so the outcome
+  // does not depend on the order the model happened to answer in.
+  const byWeb = new Map();
+  for (const v of valid) {
+    if (!byWeb.has(v.webIndex)) byWeb.set(v.webIndex, []);
+    byWeb.get(v.webIndex).push(v);
+  }
+
+  for (const [webIndex, contenders] of byWeb) {
+    contenders.sort((p, q) => q.effective - p.effective || p.figmaIndex - q.figmaIndex);
+    const [winner, ...rest] = contenders;
+    accept(winner);
+
+    for (const loser of rest) {
+      const permitted = manyToOne.enabled
+        && sharesAncestorChain(winner.figmaIndex, loser.figmaIndex, figmaSet.elements)
+        && contenders.length <= (manyToOne.maxFanIn ?? 4);
+
+      if (!permitted) {
+        // Distinguish "we do not allow fan-in here" from "this fan-in was not
+        // the legitimate kind" - they have different fixes.
+        if (manyToOne.enabled) counts.fanInRefused++; else counts.conflictLost++;
+        reject(loser.answer, manyToOne.enabled
+          ? `fan-in refused: design ${loser.figmaIndex} is not on ${winner.figmaIndex}'s ancestor chain`
+          : `page element ${webIndex} already claimed by design ${winner.figmaIndex}`);
         continue;
       }
+      accept(loser);
     }
+  }
 
-    claimedFigma.add(f.index);
-    claimedWeb.add(w.index);
+  function accept(v) {
     counts.accepted++;
     accepted.push({
-      figmaId: p.figmaId,
-      webId: p.webId,
-      figmaIndex: f.index,
-      webIndex: w.index,
+      figmaId: figmaSet.elements[v.figmaIndex].id,
+      webId: webSet.elements[v.webIndex].id,
+      figmaIndex: v.figmaIndex,
+      webIndex: v.webIndex,
       tier: 'llm',
-      modelConfidence: p.confidence,
-      confidence: effective,
-      descriptor: p.descriptor || null,
-      classCompat: compat,
+      modelConfidence: v.answer.confidence,
+      confidence: v.effective,
+      descriptor: v.answer.descriptor || null,
+      classCompat: v.compat,
+      pick: v.answer.pick,
     });
   }
 
   return { accepted, rejected, counts };
 }
 
-/** Tier 1 anchors ∪ verified Tier 2 pairs. Disjoint by construction. */
-export function combine(anchors, verified) {
-  return [...anchors.map((a) => ({ ...a, tier: 'anchor' })), ...verified];
+/**
+ * Merge deterministic anchors with adjudicated pairs.
+ *
+ * Under the new architecture Tier 1 does not claim, so there is normally nothing
+ * to merge and this is the identity function on the adjudicated set. It is kept
+ * because E2b may still hold back mutual-best warp anchors, and because a caller
+ * that mixes the two must not silently produce duplicates: an anchor and an
+ * adjudicated pair naming the same design element is a real disagreement, and
+ * the anchor wins as the deterministic one.
+ */
+export function combine(anchors, adjudicated) {
+  const claimedFigma = new Set(anchors.map((a) => a.figmaIndex));
+  const claimedWeb = new Set(anchors.map((a) => a.webIndex));
+
+  const kept = adjudicated.filter((p) => !claimedFigma.has(p.figmaIndex) && !claimedWeb.has(p.webIndex));
+  return [...anchors.map((a) => ({ ...a, tier: a.tier ?? 'anchor' })), ...kept];
 }
