@@ -14,13 +14,34 @@ Branch: **`v2`** (`origin/v2`) · Baseline: `a8014af` on `main`
 |---|---|
 | **0 — Ship-now improvements** | 🟢 **Complete** — 6 of 7 items done; score instability investigated and **deliberately deferred to Phase 8** with a diagnosis (see below) |
 | **1 — E1 comparable element set** ⛔ GATE | 🟢 **Complete — GATE PASSED.** Ceiling 87%/88% says the trees are comparable. The gate *metric* was replaced: node-count ratio measured the wrong thing (see below) |
-| **2 — E2 correspondence** ⛔ GATE | 🟡 **Started.** Gemini schema enforcement measured; spike sheets generated. **Blocked on the user for the hand-scoring gate and the `/v1/images` tier** |
+| **2 — E2 correspondence** ⛔ GATE | 🔴 **GATE FAILS, and is being re-architected.** Six sheets: precision 60% at ≥0.85, recall 33.5%. A residue-only Tier 2 is capped at **52.2%** and one-to-one at **82%**. Plan: `docs/v2-e2-rearchitecture.md` — **Phase A passed, Phase B done, Phase C next** |
 | **3 — E3 structural verdict** | 🟢 **Built, with aligned/not-aligned semantics.** 325 unaligned design elements produce **1** structural claim, not 325 "missing" findings |
-| **4 — E4 property comparison** | ⬜ Not started |
-| **5 — E5 issue prioritisation** ⛔ GATE | ⬜ Not started |
-| **6 — E6 evidence** | ⬜ Not started |
-| **7 — E7 report rebuild** | ⬜ Not started |
+| **4 — E4 property comparison** | 🟢 **Built.** See the Phase 4 block below |
+| **5 — E5 issue prioritisation** ⛔ GATE | 🟢 **Built.** 255 issues, 84 systemic groups, 50 single-fix |
+| **6 — E6 evidence** | 🟢 **Built.** 20 annotated side-by-side captures; one known pinned-section defect |
+| **7 — E7 report rebuild** | 🟢 **Built.** `out/qa/report.html`, LLM confined to wording |
 | **8 — Regression capability** | ⬜ Not started |
+
+> **This table was stale until 2026-08-14** — phases 4–7 read "Not started" while the detail sections
+> below and commit `58820c2` ("V2: element-level design parity engine (E1–E7)") describe them as built
+> and measured. Corrected in Phase B along with the calibration claim.
+
+### Where E2 actually stands (2026-08-14)
+
+| | |
+|---|---|
+| Precision at ≥0.85, **before** Phase B | 60.0% (9/15) |
+| Precision at ≥0.85, **after** Phase B | **100% (6/6) — but on 3.7% recall** |
+| Recall, any confidence | 33.5% (54/161) |
+| Shortlist recall@8 (ranking only) | 85.7%, or **90.7%** with text |
+| **Ceiling utilisation @8** | **0.391** — Tier 1 converts 54 of the 138 answers its own ranker surfaces |
+| Ceiling, residue-only second pass | 52.2% |
+| Ceiling, strict one-to-one | 82.0% → **87.4%** after X3 |
+
+**The gate is still failed, and Phase B did not rescue it.** A threshold that asserts 6 pairs against
+161 true matches is a refusal, not a result — the same failure mode as the original "100% on four
+assertions". `score.js` now enforces this as a conjunction (precision **and** coverage at the
+threshold) so the number cannot be misread again.
 
 ---
 
@@ -665,9 +686,33 @@ section produced zero assertions and zero correct pairings. The stated gate — 
 high-confidence pairs across 3 hand-scored sections"* — is satisfied only because the matcher
 declined to be confident about anything in the section it could not do.
 
-**The one genuinely good result: confidence is well calibrated.** All nine wrong pairings in f17→w18
-scored 0.305–0.616, and nothing reached 0.85. The matcher knew it was lost and said so. That property
-is what makes a low-recall tier safe to ship behind a gate.
+> ### ⚠️ WITHDRAWN 2026-08-14 — "confidence is well calibrated"
+>
+> This section previously read: *"The one genuinely good result: confidence is well calibrated. All
+> nine wrong pairings in f17→w18 scored 0.305–0.616, and nothing reached 0.85. The matcher knew it
+> was lost and said so. That property is what makes a low-recall tier safe to ship behind a gate."*
+>
+> **That claim was drawn from three sections and does not survive the extension to six.** Measured
+> across all six hand-scored sheets (`src/correspond/calibrate.js`), empirical precision per
+> confidence bin was:
+>
+> | bin | 0–0.30 | 0.30–0.50 | 0.50–0.60 | 0.60–0.70 | 0.70–0.85 | **0.85–1.00** |
+> |---|---|---|---|---|---|---|
+> | precision | 25.0% | 25.7% | 53.3% | 77.3% | 81.8% | **60.0%** |
+> | n | 8 | 35 | 15 | 22 | 11 | 15 |
+>
+> The curve is well ordered up to 0.85 and then **collapses**: the reporting gate was selecting pairs
+> *less* reliable than the band beneath it. What f17→w18 demonstrated was not calibration but
+> abstention — it declined a section it could not do, which is a different property and does not
+> generalise to sections it attempts and gets wrong.
+>
+> **Cause, and it is specific.** Every wrong assertion above 0.85 beat its runner-up by ≤ 0.464, and
+> four of the six by ≤ 0.130 — all of them stacked, near-identical form fields in f15→w16, where every
+> candidate aligns perfectly and a formula that sees only the chosen pair cannot tell them apart. The
+> confidence had no notion of how close the decision was.
+>
+> **Fixed in Phase B** by a decisiveness multiplier (`correspond.decisiveness`), which makes the curve
+> monotone — 27/56/57/75/89/100%. See `docs/v2-e2-rearchitecture.md` §1.2 and its Phase B block.
 
 #### Why f17→w18 scored zero — the true pairs were never candidates
 

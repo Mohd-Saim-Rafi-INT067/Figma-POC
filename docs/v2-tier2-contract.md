@@ -1,5 +1,23 @@
 # E2 Tier 2 — the correspondence contract
 
+> ## ⚠️ PARTIALLY SUPERSEDED — 2026-08-14
+>
+> `docs/v2-e2-rearchitecture.md` replaces the tier structure this document specifies. Read that
+> first; this file remains the record of what was contracted and measured, and three of its parts
+> are still load-bearing.
+>
+> | Section | Status |
+> |---|---|
+> | **§1** What Tier 2 is for | **Superseded.** Tier 2 was specified as a *residue* pass over what Tier 1 left. Measured, that shape is capped at **52.2% recall** — Tier 1 consumes both elements of a wrong pair, so 47.8% of true matches never reach the residue at all. Tier 1 is being demoted to a candidate generator |
+> | **§2** Input contract | **Amended.** The compact element record stands. The **no-text rule is amended for identity only**: X2 measured +14.2 points recall@1 and +5.0 recall@8 from a ranker-side text feature, transferring to held-out sheets. Text still never reaches a proposal, a value or a finding |
+> | **§3** Output contract | **Superseded.** Free-typed `figmaId`/`webId` is replaced by an **index into a supplied shortlist**, which makes the phantom-id failure mode structurally impossible rather than merely checked |
+> | **§4** Verification | **Survives, and is reused in E2d.** Every check here still runs. The phantom-id check becomes an assertion that should never fire |
+> | **§4.1** Repeated-group ordering | Survives — still specified, still not implemented |
+> | **§4.2** Proximity veto | **Rejected**, on this document's own unseen validation. Retired in Phase C |
+> | **§5** Confidence and gating | **Amended.** The 0.85 threshold was re-derived, not inherited. Tier 1 confidence gained a decisiveness term because the old curve collapsed in its top bin |
+> | **§6** Combination with Tier 1 | **Superseded** by the shortlist architecture |
+> | **§7** Measurement plan | **Survives and is extended** — recall@k, ceiling utilisation and the reachable/poisoned split are now standing metrics in `score.js` |
+
 **Status:** specification, written before the first model call. Companion to `v2-architecture.md` §6
 and `v2-hld.md` §5.2.
 
