@@ -22,66 +22,12 @@
  * passes rather than one.
  */
 
-/**
- * Shared horizontal extent as a fraction of the NARROWER element.
- *
- * Deliberately generous, and used only to decide whether a pair is worth
- * considering at all: any element horizontally contained by another scores 1.0.
- */
-export function xOverlap(a, b) {
-  const lo = Math.max(a.box.x, b.box.x);
-  const hi = Math.min(a.box.x + a.box.w, b.box.x + b.box.w);
-  return Math.max(0, hi - lo) / Math.max(1, Math.min(a.box.w, b.box.w));
-}
+import { candidateFeatures, scoreFeatures, marginStats, xOverlap, xAlignment } from './candidates.js';
 
-/**
- * Shared horizontal extent as a fraction of the COMBINED extent - a 1-D IoU.
- *
- * This is what ranks candidates, because `xOverlap` cannot tell alignment from
- * containment and that difference decides real cases. Measured on the
- * testimonials section: a 54px design avatar at x=244 scored a perfect 1.000
- * against a 350px decorative blob spanning x=46..396, and 0.384 against the
- * 56px avatar that is actually its counterpart. The matcher took the blob.
- * Under this measure the same pair reads 0.153 against the blob and 0.231
- * against the avatar, and the ranking comes out right.
- *
- * Kept separate rather than replacing `xOverlap` so the candidate FILTER stays
- * generous - narrowing it would cost recall that Tier 2 could otherwise
- * recover, and a candidate never seen is a candidate the model never gets to
- * judge.
- */
-export function xAlignment(a, b) {
-  const lo = Math.max(a.box.x, b.box.x);
-  const hi = Math.min(a.box.x + a.box.w, b.box.x + b.box.w);
-  const inter = Math.max(0, hi - lo);
-  const union = Math.max(a.box.x + a.box.w, b.box.x + b.box.w) - Math.min(a.box.x, b.box.x);
-  return inter / Math.max(1, union);
-}
-
-/** 0 when widths match, approaching 1 as they diverge. A score, never a gate. */
-function widthPenalty(a, b, band) {
-  const ratio = a.box.w / Math.max(1, b.box.w);
-  return Math.min(1, Math.abs(Math.log(ratio)) / band);
-}
-
-/**
- * How plausible is it that these two classes are the same element? 1.0 = same.
- *
- * Class was a hard filter until it was measured against ground truth, where it
- * rejected 6 of 16 true pairs in one section on its own. EVERY disagreement
- * observed was `glyph -> something`: a design draws an icon as vector art and
- * the page builds it as a text character (the accordion +/- indicator), as a
- * button, or as an image. The design side simply has no way to express which.
- *
- * So `glyph` is the promiscuous class, and text-to-control is the other
- * plausible pair (a label built as a <button>). Everything else stays
- * expensive without being fatal.
- */
-function classCompatibility(a, b, table) {
-  if (a.cls === b.cls) return 1;
-  const key = [a.cls, b.cls].sort().join('~');
-  return table[key] ?? table.default;
-}
+// Re-exported for the existing importers (gate.js mirrors xOverlap; verify.js
+// mirrors xAlignment). The definitions now live in candidates.js so Tier 1 and
+// E2a cannot drift apart - see that module's header.
+export { xOverlap, xAlignment };
 
 /** Longest increasing subsequence - drops pairings that cross in reading order. */
 function longestMonotonic(pairs) {
@@ -151,45 +97,39 @@ function candidatesFor(figma, web, cfg, { strict, warp, sectionHeight, rearrange
   const yWindow = rearranged ? cfg.rearranged.yResidualWindow : cfg.yResidualWindow;
   const yRelWindow = rearranged ? cfg.rearranged.yRelWindow : cfg.yRelWindow;
 
+  // Features come from candidates.js; every FILTER below stays here, because a
+  // candidate that module never emits is one no later stage can recover.
+  const ctx = { warp, sectionHeight, yWindow, yRelWindow };
+
   for (let i = 0; i < figma.length; i++) {
     for (let j = 0; j < web.length; j++) {
       const a = figma[i], b = web[j];
+      const x = candidateFeatures(a, b, cfg, ctx);
 
       // Class SCORES, it no longer filters - except for seeds, which define the
       // warp and must be beyond argument. `classIsFilter` restores the old
       // behaviour so before/after can be measured rather than remembered.
-      const classCompat = classCompatibility(a, b, cfg.classCompatibility);
-      if ((strict || cfg.classIsFilter) && classCompat < 1) continue;
+      if ((strict || cfg.classIsFilter) && x.classCompat < 1) continue;
 
       // Generous filter, discriminating score - see xAlignment.
-      const ov = xOverlap(a, b);
-      if (ov < xFloor) continue;
-      const align = xAlignment(a, b);
+      if (x.xOverlap < xFloor) continue;
 
-      const wp = widthPenalty(a, b, cfg.widthRatioScoreBand);
-      if (strict && wp >= 1) continue;   // seeds must agree on width; later passes need not
+      if (strict && x.widthPenalty >= 1) continue;   // seeds must agree on width; later passes need not
 
       // Y agreement. Pass 1 has no warp and falls back to relative position;
       // pass 2 measures against the interpolated expectation instead.
-      let yScore;
       if (warp) {
-        const expected = warp(a.box.y);
-        const residual = Math.abs(b.box.y - expected) / Math.max(1, sectionHeight);
-        if (residual > yWindow) continue;
-        yScore = 1 - residual / yWindow;
-      } else {
-        const dy = Math.abs(a.yRel - b.yRel);
-        if (dy > (strict ? cfg.yRelStrict : yRelWindow)) continue;
-        yScore = 1 - dy / yRelWindow;
-      }
+        if (x.yResidual > yWindow) continue;
+      } else if (x.yRelGap > (strict ? cfg.yRelStrict : yRelWindow)) continue;
 
       // A same-class pair scores exactly as it did before this became a score,
       // so nothing that already worked is perturbed; only cross-class pairs,
       // which previously could not exist at all, are penalised.
       out.push({
         fi: i, wi: j,
-        score: align + yScore - cfg.widthWeight * wp - cfg.classWeight * (1 - classCompat),
-        xOverlap: ov, xAlignment: align, widthPenalty: wp, yScore, classCompat,
+        score: scoreFeatures(x, cfg),
+        xOverlap: x.xOverlap, xAlignment: x.xAlignment,
+        widthPenalty: x.widthPenalty, yScore: x.yScore, classCompat: x.classCompat,
       });
     }
   }
@@ -279,6 +219,30 @@ export function anchorSection(figmaSet, webSet, cfg) {
   // keeps the whole set consistent rather than letting pass 2 add a crossing.
   const merged = bandedMonotonic([...seeds, ...resolve(rest, figma, cfg, taken)], figma, cfg.orderBands);
 
+  /**
+   * How decisively did each design element's winner win? Phase B.
+   *
+   * Measured over the six hand-scored sections: the confidence curve below is
+   * well ordered from 0 to 0.85 (25% -> 26% -> 53% -> 77% -> 82%) and then
+   * COLLAPSES to 60% in the top bin. The cause is near-ties. Every wrong
+   * assertion above 0.85 won by 0.464 or less, and four of the six won by 0.13
+   * or less - stacked, near-identical form fields where every candidate aligns
+   * perfectly and the formula, which sees only the chosen pair, cannot tell.
+   *
+   * Computed unwarped and unfiltered, over every page element, which is how it
+   * was measured (calibrate.js). Costs one extra ranking pass per design
+   * element and no model call.
+   */
+  const dec = cfg.decisiveness;
+  const margins = dec?.enabled
+    ? figma.map((f) => marginStats(f, web, cfg).margin ?? 0)
+    : null;
+
+  const decisiveness = (fi) => {
+    if (!margins) return 1;
+    return dec.marginFloor + (1 - dec.marginFloor) * Math.min(1, margins[fi] / dec.marginFullCredit);
+  };
+
   const pairs = merged.map((m) => ({
     figmaId: figma[m.fi].sourceRef.figmaNodeId ?? figma[m.fi].id,
     webId: web[m.wi].sourceRef.webSelector ?? web[m.wi].id,
@@ -294,9 +258,15 @@ export function anchorSection(figmaSet, webSet, cfg) {
     // existing behaviour is untouched - while a cross-class pair can only ever
     // be marked down. Adding it as a term would have inflated every same-class
     // confidence and risked pushing wrong pairs above the report threshold.
+    //
+    // Decisiveness multiplies in last, for the same reason class does: it can
+    // only ever mark a pair DOWN. Measured, it turns the curve monotone -
+    // 27/56/57/75/89/100% against 25/26/53/77/82/60% - so a confidence finally
+    // orders what it claims to order.
     confidence: +Math.max(0, Math.min(1,
-      (0.5 * m.xAlignment + 0.3 * m.yScore + 0.2 * (1 - m.widthPenalty)) * m.classCompat
+      (0.5 * m.xAlignment + 0.3 * m.yScore + 0.2 * (1 - m.widthPenalty)) * m.classCompat * decisiveness(m.fi)
     )).toFixed(3),
+    margin: margins ? +margins[m.fi].toFixed(3) : null,
     seed: seeds.includes(m),
   }));
 
