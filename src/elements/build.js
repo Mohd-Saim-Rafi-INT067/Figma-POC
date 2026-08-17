@@ -20,11 +20,13 @@ import {
   isZeroArea,
   isHidden,
   isIconOnlySubtree,
+  isCoincidentPassthrough,
   unionBox,
   dominantFill,
   subtreeSize,
 } from './collapse.js';
 import { styleSignature, detectRepeatedGroups } from './signature.js';
+import { normalizeText } from '../ir/text.js';
 
 /**
  * Build the element set for one section.
@@ -39,7 +41,7 @@ export function buildElementSet(snapshot, sectionId, cfg) {
   if (!root) throw new Error(`E1: section root ${sectionId} not found on the ${snapshot.side} side`);
 
   const origin = root.boxAbsolute;
-  const dropped = { zeroArea: 0, hidden: 0, iconCollapsed: 0, wrapper: 0, emptyText: 0 };
+  const dropped = { zeroArea: 0, hidden: 0, iconCollapsed: 0, wrapper: 0, emptyText: 0, coincidentShell: 0 };
   const elements = [];
 
   /**
@@ -68,11 +70,16 @@ export function buildElementSet(snapshot, sectionId, cfg) {
       }
     }
 
-    const keep = id !== sectionId && isElement(node, cfg);
+    // A coincident shell is skipped rather than emitted, and its single child is
+    // visited as usual - so the chain yields one element instead of N. See
+    // isCoincidentPassthrough; off unless the tolerance profile enables it.
+    const passthrough = id !== sectionId && isCoincidentPassthrough(id, byId, cfg);
+    const keep = id !== sectionId && !passthrough && isElement(node, cfg);
     if (keep) {
       emit(node, parentId, depth, { role: node.role, box: node.boxAbsolute, collapsedFrom: 1, fillOverride: null });
     } else if (id !== sectionId) {
-      if (node.role === 'text') dropped.emptyText++;
+      if (passthrough) dropped.coincidentShell++;
+      else if (node.role === 'text') dropped.emptyText++;
       else dropped.wrapper++;
     }
 
@@ -108,7 +115,28 @@ export function buildElementSet(snapshot, sectionId, cfg) {
       yRel: origin.h ? +((box.y - origin.y) / origin.h).toFixed(4) : 0,
       area: +(box.w * box.h).toFixed(1),
       styleSignature: styleSignature(shaped, cls),
-      hasText: !!(node.text && node.text.trim()),   // presence only - never the string
+      hasText: !!(node.text && node.text.trim()),   // presence only
+      /**
+       * Normalized text, for MATCHING ONLY. Contract amendment, Phase C.
+       *
+       * The Tier 2 contract §2 banned text outright. That ban is correct for
+       * VALUES - design copy and live copy legitimately differ, so a string that
+       * reached a finding would manufacture one - and it was never measured for
+       * IDENTITY, which is a different question. X2 measured it: feeding text to
+       * the RANKER moves shortlist recall@1 from 46.0% to 60.2% and recall@8
+       * from 85.7% to 90.7%, holding up on held-out sheets, with the whole gain
+       * in the one section whose layout was rearranged during the build.
+       *
+       * The containment is unchanged and enforced elsewhere:
+       *   - the Tier 2 prompt never includes it (test/candidates.test.js)
+       *   - no comparison stage reads it; E4 compares measured values
+       *   - `hasText` is retained so nothing downstream had to change
+       *
+       * Capped at 120 characters because a design paragraph and its built
+       * counterpart agree at the start and diverge later far more often than the
+       * reverse, and an uncapped body string dominates every bigram set it meets.
+       */
+      textKey: (node.text ? normalizeText(node.text) : null)?.slice(0, 120) || null,
       collapsedFrom,
       childCount: 0,
       orderIndex: 0,

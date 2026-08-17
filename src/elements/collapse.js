@@ -95,6 +95,49 @@ export function isIconOnlySubtree(id, byId) {
 }
 
 /**
+ * A shell that adds nesting but no geometry - exactly one child, occupying the
+ * same box as itself.
+ *
+ * X3, behind `elements.collapseCoincidentChain` (docs/v2-e2-rearchitecture.md
+ * §3.3). The ground truth diagnosed this shape on both sheets that carry
+ * many-to-one rows:
+ *
+ *   f15-w16  "the design expresses each form field as several stacked nodes - a
+ *             control frame, its inner states and its label - where the page
+ *             builds one <input>. Hence figma 11/12/13/15 all -> web 12."
+ *   f8-w9    "a designed container plus its label where the page builds a single
+ *             element carrying both."
+ *
+ * Measured on f15-w16: design elements 11, 12 and 13 are three nested `input`
+ * nodes at an identical x=1136 y=200 w=528 h=78. They are one control to a
+ * reader and three rows to the matcher, and under a one-to-one constraint two of
+ * the three are unwinnable by construction.
+ *
+ * Deliberately side-agnostic. The web builds the same shape - a div wrapping a
+ * single span that fills it - and a rule that fired on one side only would
+ * reintroduce the asymmetry E1 exists to remove (build.js header).
+ *
+ * The INNERMOST survives. The outer shells are the ones carrying no geometry of
+ * their own, and the innermost is what the page's single element resembles.
+ */
+export function isCoincidentPassthrough(id, byId, cfg) {
+  if (!cfg.collapseCoincidentChain) return false;
+
+  const node = byId.get(id);
+  if (!node || node.children.length !== 1) return false;
+
+  const child = byId.get(node.children[0]);
+  // A child that will itself be dropped cannot stand in for its parent - that
+  // would delete both and lose the element entirely.
+  if (!child || isZeroArea(child, cfg.minAreaPx) || isHidden(child)) return false;
+
+  const a = node.boxAbsolute, b = child.boxAbsolute;
+  const tol = cfg.coincidenceTolPx ?? 2;
+  return Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol
+    && Math.abs(a.w - b.w) <= tol && Math.abs(a.h - b.h) <= tol;
+}
+
+/**
  * Where the collapsed cluster's ink actually is.
  *
  * Unions the LEAVES only. Intermediate groups and frames can be far larger than

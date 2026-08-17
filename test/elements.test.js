@@ -107,15 +107,44 @@ test('E1: a dropped wrapper reparents its survivors rather than losing them', ()
   assert.equal(elements.find((e) => e.id === 'label').parentId, 'card', 'reparented past the dropped wrapper');
 });
 
-test('E1: boxes are section-relative and text never leaves as a string', () => {
+test('E1: boxes are section-relative, and text is normalized for matching only', () => {
+  // CONTRACT AMENDMENT, Phase C. This test previously asserted that no text at
+  // all left E1. It now asserts the narrower rule the measurement earned: text
+  // leaves NORMALIZED and CAPPED, for identity, and the raw string never does.
+  //
+  // Note the old assertion had also stopped testing what it claimed - it looked
+  // for 'Enterprise' in the serialized element, which normalizeText lowercases,
+  // so it would have passed whatever textKey contained.
   const snap = snapshot('figma', [
     { id: 'sec', role: 'container', boxAbsolute: box(0, 400, 200, 100) },
-    { id: 't', parentId: 'sec', role: 'text', text: 'Enterprise Software', boxAbsolute: box(20, 450, 80, 20) },
+    { id: 't', parentId: 'sec', role: 'text', text: '  Enterprise   Software  ', boxAbsolute: box(20, 450, 80, 20) },
   ]);
   const el = buildElementSet(snap, 'sec', CFG).elements[0];
+
   assert.deepEqual(el.box, { x: 20, y: 50, w: 80, h: 20 });
-  assert.equal(el.hasText, true);
-  assert.ok(!JSON.stringify(el).includes('Enterprise'), 'the string must stop at E1');
+  assert.equal(el.hasText, true, 'the boolean is retained so nothing downstream had to change');
+  assert.equal(el.textKey, 'enterprise software', 'normalized: lowercased, whitespace collapsed, trimmed');
+  assert.ok(!JSON.stringify(el).includes('Enterprise   Software'), 'the raw string still stops at E1');
+});
+
+test('E1: textKey is capped, so one long paragraph cannot dominate a match', () => {
+  const long = 'lorem ipsum dolor sit amet '.repeat(20);
+  const snap = snapshot('web', [
+    { id: 'sec', role: 'container', boxAbsolute: box(0, 0, 400, 200) },
+    { id: 'p', parentId: 'sec', role: 'text', text: long, boxAbsolute: box(0, 0, 400, 100) },
+  ]);
+  const el = buildElementSet(snap, 'sec', CFG).elements[0];
+  assert.equal(el.textKey.length, 120);
+});
+
+test('E1: a node with no text gets null, not an empty string', () => {
+  const snap = snapshot('web', [
+    { id: 'sec', role: 'container', boxAbsolute: box(0, 0, 100, 100) },
+    { id: 'card', parentId: 'sec', role: 'container', boxAbsolute: box(0, 0, 50, 50), fill: { backgroundColor: makeColor(1, 2, 3) } },
+  ]);
+  const el = buildElementSet(snap, 'sec', CFG).elements[0];
+  assert.equal(el.textKey, null, 'absent and empty must not look the same to the ranker');
+  assert.equal(el.hasText, false);
 });
 
 test('E1: an empty text node is not an element', () => {
@@ -171,4 +200,44 @@ test('E1: two builds over the same snapshot are identical, in reading order', ()
   const two = buildElementSet(snapshot('web', nodes), 'sec', CFG);
   assert.deepEqual(one, two);
   assert.deepEqual(one.elements.map((e) => e.id), ['a', 'b'], 'reading order, not tree order');
+});
+
+test('E1: a coincident single-child shell collapses to one element', () => {
+  // X3. Measured shape on f15-w16: figma 11/12/13 are three nested `input`
+  // nodes at an identical box - one control to a reader, three rows to the
+  // matcher, and under one-to-one two of the three are unwinnable.
+  const nodes = [
+    { id: 'sec', role: 'container', boxAbsolute: box(0, 0, 600, 200) },
+    { id: 'outer', parentId: 'sec', role: 'input', boxAbsolute: box(100, 20, 500, 78) },
+    { id: 'mid', parentId: 'outer', role: 'input', boxAbsolute: box(100, 20, 500, 78) },
+    { id: 'inner', parentId: 'mid', role: 'input', boxAbsolute: box(100, 20, 500, 78) },
+  ];
+  const off = buildElementSet(snapshot('figma', nodes), 'sec', CFG);
+  assert.deepEqual(off.elements.map((e) => e.id), ['outer', 'mid', 'inner']);
+
+  const on = buildElementSet(snapshot('figma', nodes), 'sec', { ...CFG, collapseCoincidentChain: true });
+  assert.deepEqual(on.elements.map((e) => e.id), ['inner'], 'the innermost survives');
+  assert.equal(on.stats.dropped.coincidentShell, 2);
+});
+
+test('E1: padding is not a shell — a container inset from its child is kept', () => {
+  // f8-w9's remaining shape: a 201x60 button holding a 161x20 label. Merging
+  // those two would change what E4 compares, so the rule must not reach it.
+  const nodes = [
+    { id: 'sec', role: 'container', boxAbsolute: box(0, 0, 600, 200) },
+    { id: 'btn', parentId: 'sec', role: 'button', boxAbsolute: box(520, 401, 201, 60) },
+    { id: 'label', parentId: 'btn', role: 'text', text: 'Get started', boxAbsolute: box(540, 421, 161, 20) },
+  ];
+  const on = buildElementSet(snapshot('figma', nodes), 'sec', { ...CFG, collapseCoincidentChain: true });
+  assert.deepEqual(on.elements.map((e) => e.id).sort(), ['btn', 'label']);
+});
+
+test('E1: a shell whose only child would be dropped is kept, not deleted with it', () => {
+  const nodes = [
+    { id: 'sec', role: 'container', boxAbsolute: box(0, 0, 600, 200) },
+    { id: 'shell', parentId: 'sec', role: 'input', boxAbsolute: box(10, 10, 100, 40) },
+    { id: 'gone', parentId: 'shell', role: 'text', text: 'x', boxAbsolute: box(10, 10, 100, 40), opacity: 0 },
+  ];
+  const on = buildElementSet(snapshot('figma', nodes), 'sec', { ...CFG, collapseCoincidentChain: true });
+  assert.deepEqual(on.elements.map((e) => e.id), ['shell'], 'collapsing here would lose the element entirely');
 });
