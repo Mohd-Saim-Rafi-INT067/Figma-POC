@@ -670,6 +670,73 @@ gate read 100% on four assertions against 54 real matches.
 
 ---
 
+### Integration — from benchmark to product ✅ **2026-08-17**
+
+Phases A–D measured the architecture. They did not ship it: `anchorSection` was called inside
+E3 and the adjudicator existed only in `tier2-run.js`, so **every report the tool had ever
+produced used Tier 1 alone** while the benchmark reported 67.8%. Measuring a thing and
+shipping it are different, and only one had happened.
+
+#### Three changes
+
+**E4 fan-in (`2fcda62`).** Enabling `manyToOne` in Phase C without the matching E4 change was
+a bug I shipped: `compareElementPairs` iterated the aligned list flat, so a page element
+claimed by several design elements collected the same verdict repeatedly. The Phase D run
+accepted **17 fan-in groups**, each of which would have doubled its findings — and E5 would
+have read the duplicates as a systemic pattern. Both members are still compared, because they
+carry different properties (the frame has fill and border, the label has typography); members
+are ordered by correspondence quality and the first to claim a (page element, property) keeps
+it.
+
+**E2 as a stage (`4422d95`).** Correspondence is established once, E3 consumes it, E4 reuses
+what E3 aligned. E3 no longer computes its own and **throws** rather than falling back,
+because a silent Tier 1 fallback there is precisely how this went unnoticed. The stage is
+degradable by design — a missing key, exhausted quota or failed batch drops to Tier 1 **and
+says so**, since a 46% report and a 68% report are different claims and must not look alike.
+Cached on the element sets, so a tolerance edit costs nothing and an extraction change costs
+exactly what it should.
+
+**`replay.js`.** Runs E2–E7 from a completed run's artifacts. Extraction is the expensive,
+quota-bound, non-deterministic half — M2 spends Figma requests from roughly six a month, M1
+re-measures a page that has moved on — and none of it is needed to iterate on comparison or
+reporting. Holding measurements fixed also makes it the controlled comparison.
+
+#### Measured end to end, against the 2026-08-13 report
+
+| | before (Tier 1) | after | |
+|---|---|---|---|
+| Aligned pairs | 308 | **318** | +10 |
+| **Element findings** | 739 | **644** | **−95 (−13%)** |
+| **Systemic groups** | 155 | **127** | **−28 (−18%)** |
+| Issues | 249 | 253 | +4 |
+| **Findings per aligned pair** | 2.40 | **2.03** | **−15%** |
+
+**More correspondence produced fewer findings.** That is the claim the whole re-architecture
+rested on, and it is the first time it has been tested on the report rather than on a
+benchmark. Had the extra pairs been noise, findings would have risen; density fell 15%
+instead, which says the old Tier-1 pairs were manufacturing differences by matching elements
+that were not counterparts.
+
+Structural claims rose 6 → 11, and that was the number worth checking, because a broader
+correspondence turning into more absence assertions would be the dangerous direction. It is
+not: three of the four increases are in sections where correspondence *improved* (f2→w3 went
+11 → 20 aligned pairs). E3 asserts absence only where correspondence is healthy, so better
+matching unlocks claims it was previously right to suppress.
+
+**Caveat, and it is not small: this run is 11 of 18 sections adjudicated.** Quota ran out
+mid-run and 7 sections fell back to Tier 1, so the improvement above comes from roughly 60%
+of the page. E7's prose synthesis failed for the same reason; the report shipped on
+deterministic wording, which is the designed behaviour and worth noting as the second time
+that fallback has proven itself.
+
+#### One more invisible-report bug (`c028a0a`)
+
+`get` cold-loaded a run by id but `list` read only memory, so after a restart the gallery was
+empty while every report sat on disk reachable only by guessing its id. The module header had
+promised restart safety; half of it was true.
+
+---
+
 ### Phase E — generalization ⛔ **GATE** *(blocked on the user)*
 
 - [ ] Second Figma file + live page (already on the blocked list in `v2-progress-report.md`)

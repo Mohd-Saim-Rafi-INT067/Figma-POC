@@ -8,19 +8,77 @@ Branch: **`v2`** (`origin/v2`) · Baseline: `a8014af` on `main`
 
 ---
 
+# ▶ RESUME HERE — state as of 2026-08-17
+
+**The E2 correspondence re-architecture is built, gated and shipped into the pipeline.**
+Plan and full measurement record: `v2-e2-rearchitecture.md`. 11 commits on `origin/v2` past
+`58820c2`. 109 tests passing.
+
+### What changed, in one line each
+
+| | |
+|---|---|
+| **Correspondence recall** | 33.5% → **67.8%** held-out (Phase D gate: PASS, precision 100% on 37 assertions) |
+| **Tier 1 alone** | 33.5% → **46.4%**, from the text feature, with no model involved |
+| **Shortlist recall@8** | **90.1%** — the ceiling any adjudicator can reach |
+| **The report** | 739 → **644** element findings, 155 → **127** systemic groups, on **more** aligned pairs (308 → 318) |
+
+That last row is the one that matters: **more correspondence produced fewer findings.**
+Findings per aligned pair fell 2.40 → 2.03. The old Tier-1 pairs were manufacturing
+differences by matching elements that were not counterparts.
+
+### The one thing that is half-done
+
+The last end-to-end run is **11 of 18 sections adjudicated** — Gemini quota ran out mid-run
+and the other 7 fell back to Tier 1. E7's prose synthesis failed for the same reason, so the
+current report uses deterministic wording throughout.
+
+**To finish it** (10 sections are cached, so this pays for ~5–7):
+
+```bash
+node src/pipeline/replay.js out --publish     # E2–E7 only, no extraction, no Figma quota
+```
+
+Then open http://localhost:5173 (`npm start`) — the run publishes straight into the gallery.
+
+### What is left, in priority order
+
+| # | Item | Blocked on | Why it matters |
+|---|---|---|---|
+| 1 | **Finish the adjudicated run** | Gemini quota (daily) | the current report is a 60% mix; the real numbers are better |
+| 2 | **Phase E — second Figma file + page** | **you** | the only thing turning "measured on one page" into a claim that generalises. Everything above is six sections of quokkalabs.com |
+| 3 | **X6 — image ablation** | quota | do the screenshots pay for themselves, or would structure-only do? Decides ~60% of token cost |
+| 4 | **Repeated components** | nothing | twelve near-identical fanned cards are the one case the model cannot disambiguate (f6→w7 sits at 0.25 recall). Fix is candidate-side: constrain the shortlist to the matching `templateIndex` before the model sees it. Phase 8 |
+| 5 | **Score instability (N7)** | nothing | deferred since Phase 0, still deferred |
+
+### Housekeeping
+
+- **Rotate API keys.** The Groq, xAI and previous Gemini keys were pasted into a chat
+  transcript. All live in the gitignored `.env`; the active Gemini key is the second one.
+- **Uncommitted UI work** — `ui/src/*` and `src/server/app.js` carry the single-report
+  collapse, unrelated to any of the above and uncommitted for several days.
+- Provider evaluation, if quota becomes a recurring problem: Gemini is the only one of four
+  tested that meets the contract. Groq's vision model caps at 8,000 TPM against a 14,465-token
+  payload; a self-hosted Gemma gateway ignores `format` entirely, so no enforced schema; xAI
+  has no credits. Detail in `v2-e2-rearchitecture.md`.
+
+---
+
+---
+
 ## Status at a glance
 
 | Phase | Status |
 |---|---|
 | **0 — Ship-now improvements** | 🟢 **Complete** — 6 of 7 items done; score instability investigated and **deliberately deferred to Phase 8** with a diagnosis (see below) |
 | **1 — E1 comparable element set** ⛔ GATE | 🟢 **Complete — GATE PASSED.** Ceiling 87%/88% says the trees are comparable. The gate *metric* was replaced: node-count ratio measured the wrong thing (see below) |
-| **2 — E2 correspondence** ⛔ GATE | 🔴 **GATE FAILS, and is being re-architected.** Six sheets: precision 60% at ≥0.85, recall 33.5%. A residue-only Tier 2 is capped at **52.2%** and one-to-one at **82%**. Plan: `docs/v2-e2-rearchitecture.md` — **Phase A passed, Phase B done, Phase C next** |
+| **2 — E2 correspondence** ⛔ GATE | 🟢 **GATE PASSED 2026-08-17** after a full re-architecture. Held-out recall **39.1% → 67.8%**, incremental **+28.7 points**, precision **100% (37/37)**. Shipped into the pipeline as a stage, not just measured. Record: `docs/v2-e2-rearchitecture.md` |
 | **3 — E3 structural verdict** | 🟢 **Built, with aligned/not-aligned semantics.** 325 unaligned design elements produce **1** structural claim, not 325 "missing" findings |
 | **4 — E4 property comparison** | 🟢 **Built.** See the Phase 4 block below |
 | **5 — E5 issue prioritisation** ⛔ GATE | 🟢 **Built.** 255 issues, 84 systemic groups, 50 single-fix |
 | **6 — E6 evidence** | 🟢 **Built.** 20 annotated side-by-side captures; one known pinned-section defect |
 | **7 — E7 report rebuild** | 🟢 **Built.** `out/qa/report.html`, LLM confined to wording |
-| **8 — Regression capability** | ⬜ Not started |
+| **8 — Regression capability** | ⬜ Not started — now also carries the repeated-component shortlist constraint and N7 score instability |
 
 > **This table was stale until 2026-08-14** — phases 4–7 read "Not started" while the detail sections
 > below and commit `58820c2` ("V2: element-level design parity engine (E1–E7)") describe them as built
