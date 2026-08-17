@@ -1,7 +1,7 @@
 /**
  * Replay E2 -> E7 against a completed run's artifacts.
  *
- *   node src/pipeline/replay.js [runDir]
+ *   node src/pipeline/replay.js [runDir] [--only=E2,E3] [--publish]
  *
  * Extraction is the expensive, quota-bound and non-deterministic half of an
  * audit: M2 costs Figma requests from an account with roughly six Tier-1 a
@@ -58,6 +58,60 @@ export async function buildContext(runDir) {
   };
 }
 
+/**
+ * Copy a replayed run into `out/runs/<id>/` so the UI can show it.
+ *
+ * The pipeline writes to the run directory it was given; a replay writes to
+ * `out/`, which the server never lists. Without this the replayed report exists
+ * and is simply invisible - the one thing worse than not producing it.
+ *
+ * The record is marked `replayed` and carries the ORIGINAL run's inputs, so it
+ * cannot be mistaken in the gallery for a fresh audit of the live page.
+ */
+async function publishAsRun(runDir, ctx) {
+  const { cpSync, mkdirSync, writeFileSync, existsSync } = await import('node:fs');
+  const { RUNS_DIR } = await import('../server/runs.js');
+
+  const id = `${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}-rply`;
+  const dest = join(RUNS_DIR, id);
+  mkdirSync(dest, { recursive: true });
+
+  for (const name of ['qa', 'evidence', 'elements.json', 'sections.json', 'section-alignment.json',
+    'figma-ir.json', 'web-ir.json', 'structural.json', 'element-findings.json', 'issues.json',
+    'findings.json', 'correspondence.json', 'report.html', 'report.md']) {
+    const from = join(runDir, name);
+    if (existsSync(from)) cpSync(from, join(dest, name), { recursive: true });
+  }
+
+  const corr = ctx.correspondence ?? [];
+  const record = {
+    id,
+    status: 'done',
+    replayed: true,
+    input: {
+      figmaFrameUrl: ctx.config.figmaFrameUrl ?? null,
+      pageUrl: ctx.config.pageUrl ?? null,
+      determinism: false, noCache: false, capture: false,
+    },
+    meta: {
+      pageUrl: ctx.config.pageUrl ?? null,
+      figmaFileKey: ctx.config.figmaFileKey ?? null,
+      viewportWidth: ctx.config.viewportWidth ?? 1920,
+      toleranceProfile: 'default v2',
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      durationMs: 0,
+      note: 'Replayed E2-E7 from stored extraction — measurements are the original run\'s.',
+      correspondenceTier: corr.every((c) => c.tier === 'llm') ? 'llm'
+        : corr.some((c) => c.tier === 'llm') ? 'mixed' : 'anchor',
+    },
+    stages: [],
+    result: { files: {} },
+  };
+  writeFileSync(join(dest, 'run.json'), JSON.stringify(record, null, 2));
+  return id;
+}
+
 const invokedDirectly = process.argv[1]?.replace(/\\/g, '/').endsWith('src/pipeline/replay.js');
 if (invokedDirectly) {
   const runDir = process.argv[2] || 'out';
@@ -86,5 +140,11 @@ if (invokedDirectly) {
     }
   }
 
-  console.log(`\n  ${C.green}replay complete${C.reset} in ${((Date.now() - started) / 1000).toFixed(1)}s\n`);
+  console.log(`\n  ${C.green}replay complete${C.reset} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+
+  if (process.argv.includes('--publish')) {
+    const id = await publishAsRun(runDir, ctx);
+    console.log(`  published as run ${C.bold}${id}${C.reset} — visible at http://localhost:5173`);
+  }
+  console.log('');
 }

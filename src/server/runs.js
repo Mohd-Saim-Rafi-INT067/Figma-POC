@@ -11,7 +11,7 @@
  * serializer. See docs/demo-ui-implementation-plan.md §5.2 and §13.
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -129,7 +129,34 @@ export function activeRun() {
   return null;
 }
 
+/**
+ * Load any run on disk that this process has not seen.
+ *
+ * `get` has always cold-loaded a single run by id, so a direct link survived a
+ * restart - but `list` read only the in-memory map, so after a restart the
+ * gallery was EMPTY while every report was still on disk and reachable if you
+ * happened to know its id. The module header promised "a server restart mid-demo
+ * does not lose a completed report"; half of that was true.
+ *
+ * Cheap enough to do on every list: one readdir plus a parse per unseen run, and
+ * a run is only unseen once.
+ */
+function hydrateFromDisk() {
+  if (!existsSync(RUNS_DIR)) return;
+  for (const id of readdirSync(RUNS_DIR)) {
+    if (runs.has(id)) continue;
+    const path = join(runDir(id), 'run.json');
+    if (!existsSync(path)) continue;
+    try {
+      runs.set(id, JSON.parse(readFileSync(path, 'utf8')));
+    } catch {
+      // A half-written record from a killed process is skipped, not fatal.
+    }
+  }
+}
+
 export function list({ limit = 25 } = {}) {
+  hydrateFromDisk();
   return [...runs.values()]
     .sort((a, b) => (a.id < b.id ? 1 : -1))
     .slice(0, limit)
