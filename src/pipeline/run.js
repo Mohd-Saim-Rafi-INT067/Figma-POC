@@ -17,6 +17,7 @@ import { stageWebExtract, stageWebNormalize, stageDeterminismCheck } from '../we
 import { stagePrune, stageSpacing } from './stage.js';
 import { stageSegment, stageMatch, stageCompare } from '../sections/stage.js';
 import { stageElements } from '../elements/stage.js';
+import { stageCorrespond } from '../correspond/stage.js';
 import { stageStructural, stageProperties } from '../compare/stage.js';
 import { stageIssues } from '../issues/stage.js';
 import { stageEvidence } from '../evidence/stage.js';
@@ -61,6 +62,7 @@ export const STAGES = [
   // element-level correspondence is viable while V1's aggregate comparison
   // still produces the report. S3 goes away in phase 4, not before.
   { id: 'E1',  side: 'both',  phase: 'E', label: 'Comparable element set (V2 gate)', run: stageElements },
+  { id: 'E2',  side: 'both',  phase: 'E', label: 'Element correspondence (shortlist adjudication)', run: stageCorrespond },
   { id: 'E3',  side: 'both',  phase: 'E', label: 'Structural verdict (aligned/not-aligned)', run: stageStructural },
   { id: 'E4',  side: 'both',  phase: 'E', label: 'Element property comparison',      run: stageProperties },
   { id: 'E5',  side: 'both',  phase: 'E', label: 'Issue prioritisation',              run: stageIssues },

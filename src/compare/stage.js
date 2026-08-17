@@ -1,14 +1,19 @@
 /**
  * E3 stage wiring + the structural table.
  *
- * Runs Tier 1 correspondence only. Tier 2 needs an LLM call per section and E3
- * must stay deterministic and free to run; Tier 2 pairs are folded in by the
- * benchmark harness when they exist.
+ * Correspondence is NOT computed here. E2 (`correspond/stage.js`) establishes it
+ * once for the whole run and E3 consumes it, so the structural verdict and the
+ * property comparison are judging the same pairs the report cites.
+ *
+ * This used to call `anchorSection` itself, which quietly meant every report
+ * ever produced used Tier 1 alone while the adjudicator lived in a benchmark
+ * script. E3 falling back to its own Tier 1 pass would reinstate exactly that,
+ * so it throws instead: a missing correspondence is a pipeline wiring error, and
+ * degradation is E2's decision to make and to declare.
  */
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { anchorSection } from '../correspond/anchors.js';
 import { structuralVerdict } from './structural.js';
 import { compareElementPairs } from './properties.js';
 
@@ -18,14 +23,20 @@ const pct = (v) => `${(v * 100).toFixed(0)}%`;
 
 export async function stageStructural(ctx) {
   if (!ctx.elements?.pairs?.length) throw new Error('E3 requires E1 output.');
+  if (!ctx.correspondence?.length) throw new Error('E3 requires E2 output — correspondence must be established first.');
 
   const cfg = ctx.config.tolerance;
+  const byPair = new Map(ctx.correspondence.map((c) => [`${c.figmaIndex}:${c.webIndex}`, c]));
   const results = [];
 
   for (const pair of ctx.elements.pairs) {
-    const tier1 = anchorSection(pair.figma, pair.web, cfg.correspond);
-    const verdict = structuralVerdict(pair.figma, pair.web, tier1.pairs, cfg.structural);
-    results.push({ figmaIndex: pair.figmaIndex, webIndex: pair.webIndex, sectionConfidence: pair.confidence, ...verdict });
+    const corr = byPair.get(`${pair.figmaIndex}:${pair.webIndex}`);
+    if (!corr) throw new Error(`E3: no correspondence for section pair ${pair.figmaIndex}->${pair.webIndex}`);
+    const verdict = structuralVerdict(pair.figma, pair.web, corr.aligned, cfg.structural);
+    results.push({
+      figmaIndex: pair.figmaIndex, webIndex: pair.webIndex,
+      sectionConfidence: pair.confidence, correspondenceTier: corr.tier, ...verdict,
+    });
   }
 
   ctx.structural = results;
